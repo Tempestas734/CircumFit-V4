@@ -112,59 +112,72 @@ class BodyScanPageState extends State<BodyScanPage> {
 
   // Page principale (avec le bouton "Start body scan")
   Widget _buildMainPage() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(30),
-            child: Image.asset(
-              'assets/body_image.png',
-              height: 500,
-              width: 500,
-              fit: BoxFit.cover,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // L'image s'adapte à la hauteur de l'écran pour que le bouton
+        // "Start body scan" reste toujours visible (ex. iPhone dans Safari).
+        final double imageSize =
+            (constraints.maxHeight - 130).clamp(150.0, 500.0).toDouble();
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(30),
+                    child: Image.asset(
+                      'assets/body_image.png',
+                      height: imageSize,
+                      width: imageSize,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                  Container(
+                    width: 270,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(25),
+                      gradient: const LinearGradient(
+                        colors: [Colors.blue, Color.fromARGB(255, 127, 210, 248)],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.blue.withAlpha((0.3 * 255).toInt()),
+                          spreadRadius: 2,
+                          blurRadius: 5,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => CheckDetailPage()),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                      ),
+                      child: const Text(
+                        'Start body scan',
+                        style: TextStyle(color: Colors.white, fontSize: 21),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 40),
-          Container(
-            width: 270,
-            height: 50,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(25),
-              gradient: const LinearGradient(
-                colors: [Colors.blue, Color.fromARGB(255, 127, 210, 248)],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.blue.withAlpha((0.3 * 255).toInt()),
-                  spreadRadius: 2,
-                  blurRadius: 5,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => CheckDetailPage()),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(25),
-                ),
-              ),
-              child: const Text(
-                'Start body scan',
-                style: TextStyle(color: Colors.white, fontSize: 21),
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
