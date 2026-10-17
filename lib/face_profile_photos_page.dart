@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
 import 'results_page.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -21,7 +20,6 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
   final ImagePicker _picker = ImagePicker();
   XFile? _frontImage;
   XFile? _sideImage;
-  
 
   Future<void> sendImagesToApi(BuildContext context) async {
     if (_frontImage == null || _sideImage == null) {
@@ -73,16 +71,28 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
       },
     );
 
-
     try {
       //final uri = Uri.parse('http://192.168.1.22:5000/calculate-bri'); //
-      final uri = Uri.parse('https://circumfit.onrender.com/calculate-bri'); //URL publique de l'API
+      final uri = Uri.parse(
+          'https://circumfit.onrender.com/calculate-bri'); //URL publique de l'API
       final request = http.MultipartRequest('POST', uri);
 
       // Ajouter les images et la taille
       request.fields['user_height_cm'] = widget.userHeight.toString();
-      request.files.add(await http.MultipartFile.fromPath('image_side', _sideImage!.path));
-      request.files.add(await http.MultipartFile.fromPath('image_front', _frontImage!.path));
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'image_side',
+          await _sideImage!.readAsBytes(),
+          filename: _sideImage!.name,
+        ),
+      );
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'image_front',
+          await _frontImage!.readAsBytes(),
+          filename: _frontImage!.name,
+        ),
+      );
 
       // Envoyer la requête
       final response = await request.send();
@@ -96,7 +106,8 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
           context,
           MaterialPageRoute(
             builder: (context) => ResultsPage(
-              waistCircumference: result['waist_circumference'], // Valeur reçue de l'API
+              waistCircumference:
+                  result['waist_circumference'], // Valeur reçue de l'API
               bri: result['BRI'], // Valeur reçue de l'API
             ),
           ),
@@ -172,7 +183,10 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(15),
                     gradient: const LinearGradient(
-                      colors: [Color.fromARGB(255, 186, 186, 186), Color.fromARGB(136, 78, 78, 78)],
+                      colors: [
+                        Color.fromARGB(255, 186, 186, 186),
+                        Color.fromARGB(136, 78, 78, 78)
+                      ],
                     ),
                     boxShadow: [
                       BoxShadow(
@@ -188,7 +202,8 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
                       if (_frontImage != null && _sideImage != null) {
                         sendImagesToApi(context); // Appelle l'API
                       } else {
-                        _showErrorDialog(context, message: 'Please upload both images.');
+                        _showErrorDialog(context,
+                            message: 'Please upload both images.');
                       }
                     },
                     style: ElevatedButton.styleFrom(
@@ -253,10 +268,25 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
             child: image != null
                 ? ClipRRect(
                     borderRadius: BorderRadius.circular(20),
-                    child: Image.file(
-                      File(image.path),
-                      fit: BoxFit.cover,
-                      width: double.infinity,
+                    child: FutureBuilder(
+                      future: image.readAsBytes(),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasError) {
+                          return const Center(
+                            child: Icon(Icons.broken_image, color: Colors.red),
+                          );
+                        }
+                        if (!snapshot.hasData) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
+                        return Image.memory(
+                          snapshot.data!,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                        );
+                      },
                     ),
                   )
                 : const Center(
@@ -306,7 +336,8 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
                       icon: Icons.camera_alt,
                       label: "Camera",
                       onTap: () async {
-                        final XFile? image = await _picker.pickImage(source: ImageSource.camera);
+                        final XFile? image =
+                            await _picker.pickImage(source: ImageSource.camera);
                         if (image != null) {
                           setState(() {
                             if (type == ImageType.front) {
@@ -325,7 +356,9 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
                       icon: Icons.photo_library,
                       label: "Gallery",
                       onTap: () async {
-                        final XFile? image = await _picker.pickImage(source: ImageSource.gallery); // Utiliser gallery ici
+                        final XFile? image = await _picker.pickImage(
+                            source:
+                                ImageSource.gallery); // Utiliser gallery ici
                         if (image != null) {
                           setState(() {
                             if (type == ImageType.front) {
@@ -340,7 +373,6 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
                         }
                       },
                     ),
-
                   ],
                 ),
               ],
@@ -429,5 +461,3 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
 }
 
 enum ImageType { front, side }
-
-
