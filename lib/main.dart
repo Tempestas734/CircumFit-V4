@@ -112,58 +112,72 @@ class BodyScanPageState extends State<BodyScanPage> {
 
   // Page principale (avec le bouton "Start body scan")
   Widget _buildMainPage() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ClipRRect(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final imageSize =
+            constraints.biggest.shortestSide.clamp(0.0, 300.0).toDouble();
+
+        return Center(
+          child: ClipRRect(
             borderRadius: BorderRadius.circular(30),
             child: Image.asset(
               'assets/body_image.png',
-              height: 500,
-              width: 500,
+              height: imageSize,
+              width: imageSize,
               fit: BoxFit.cover,
             ),
           ),
-          const SizedBox(height: 40),
-          Container(
-            width: 270,
+        );
+      },
+    );
+  }
+
+  Widget _buildStartScanButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 270),
+          child: SizedBox(
+            width: double.infinity,
             height: 50,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(25),
-              gradient: const LinearGradient(
-                colors: [Colors.blue, Color.fromARGB(255, 127, 210, 248)],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.blue.withAlpha((0.3 * 255).toInt()),
-                  spreadRadius: 2,
-                  blurRadius: 5,
-                  offset: const Offset(0, 3),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(25),
+                gradient: const LinearGradient(
+                  colors: [Colors.blue, Color.fromARGB(255, 127, 210, 248)],
                 ),
-              ],
-            ),
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => CheckDetailPage()),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(25),
-                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.blue.withAlpha((0.3 * 255).toInt()),
+                    spreadRadius: 2,
+                    blurRadius: 5,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
               ),
-              child: const Text(
-                'Start body scan',
-                style: TextStyle(color: Colors.white, fontSize: 21),
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => CheckDetailPage()),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
+                  ),
+                ),
+                child: const Text(
+                  'Start body scan',
+                  style: TextStyle(color: Colors.white, fontSize: 21),
+                ),
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -181,7 +195,8 @@ class BodyScanPageState extends State<BodyScanPage> {
                 automaticallyImplyLeading: false,
                 flexibleSpace: SafeArea(
                   child: Padding(
-                    padding: const EdgeInsets.only(top: 30, left: 25, right: 25),
+                    padding:
+                        const EdgeInsets.only(top: 30, left: 25, right: 25),
                     child: Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -198,32 +213,38 @@ class BodyScanPageState extends State<BodyScanPage> {
                       child: Padding(
                         padding: const EdgeInsets.all(15.0),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Text(
-                                  'Welcome back on,',
-                                  style: TextStyle(
-                                    color: Colors.black54,
-                                    fontSize: 16,
-                                  ),
+                            Expanded(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: const [
+                                    Text(
+                                      'Welcome back on,',
+                                      style: TextStyle(
+                                        color: Colors.black54,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    Text(
+                                      'CircumFit',
+                                      style: TextStyle(
+                                        color: Colors.blue,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                Text(
-                                  'CircumFit',
-                                  style: TextStyle(
-                                    color: Colors.blue,
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
+                            const SizedBox(width: 12),
                             Image.asset(
                               'assets/logo.png',
-                              height: 60,
+                              height: 48,
                             ),
                           ],
                         ),
@@ -251,35 +272,45 @@ class BodyScanPageState extends State<BodyScanPage> {
             ),
           ],
         ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-          },
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: Colors.blue,
-          unselectedItemColor: Colors.grey,
-          showSelectedLabels: false,
-          showUnselectedLabels: false,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: '',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.history_outlined),
-              activeIcon: Icon(Icons.history),
-              label: '',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.info_outline),
-              activeIcon: Icon(Icons.info),
-              label: '',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_currentIndex == 0) ...[
+              const SizedBox(height: 12),
+              _buildStartScanButton(),
+              const SizedBox(height: 12),
+            ],
+            BottomNavigationBar(
+              currentIndex: _currentIndex,
+              onTap: (index) {
+                setState(() {
+                  _currentIndex = index;
+                });
+              },
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              type: BottomNavigationBarType.fixed,
+              selectedItemColor: Colors.blue,
+              unselectedItemColor: Colors.grey,
+              showSelectedLabels: false,
+              showUnselectedLabels: false,
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.home_outlined),
+                  activeIcon: Icon(Icons.home),
+                  label: '',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.history_outlined),
+                  activeIcon: Icon(Icons.history),
+                  label: '',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.info_outline),
+                  activeIcon: Icon(Icons.info),
+                  label: '',
+                ),
+              ],
             ),
           ],
         ),
