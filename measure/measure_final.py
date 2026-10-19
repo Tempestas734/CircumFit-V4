@@ -191,39 +191,151 @@ def mesurer_largeur_taille(image_path, user_height_cm, image_name="output"):
             print("Aucun point de repère détecté.")
             return None
 
-def calculer_bri(image_path_side, image_path_front, user_height_cm, image_name="output"):
+
+import math
+
+
+def calculer_bri(
+    image_path_side,
+    image_path_front,
+    user_height_cm,
+    image_name="output"
+):
     """
-    Calcule le Body Roundness Index (BRI) à partir des mesures frontale et latérale.
+    Calcule le Body Roundness Index (BRI) à partir de deux images :
+    une vue latérale et une vue frontale.
 
-    Args:
-        image_path_side: Chemin vers l'image latérale.
-        image_path_front: Chemin vers l'image frontale.
-        user_height_cm: Hauteur réelle de la personne en centimètres.
-        image_name: Nom pour sauvegarder l'image annotée.
+    Paramètres
+    ----------
+    image_path_side : str
+        Chemin vers l'image latérale.
+    image_path_front : str
+        Chemin vers l'image frontale.
+    user_height_cm : float
+        Taille réelle de la personne en centimètres.
+    image_name : str
+        Préfixe des images annotées.
 
-    Returns:
-        BRI calculé ou None si une des mesures échoue.
+    Retour
+    ------
+    dict
+        Mesures, circonférence estimée et BRI.
+        Retourne None si le calcul est impossible.
     """
-    waist_width_side = mesurer_profondeur_taille(image_path_side, user_height_cm, image_name)
-    waist_width_front = mesurer_largeur_taille(image_path_front, user_height_cm, image_name)
 
-    if waist_width_side is not None and waist_width_front is not None:
-        # Calcul de la circonférence de la taille avec la formule de l'ellipse
-        r1, r2 = waist_width_front / 2, waist_width_side / 2
-        waist_circumference = 2 * math.pi * math.sqrt((r1**2 + r2**2) / 2)
-
-        # Calcul du BRI
-        BRI = 364.2 - 365.5 * ((1 - (waist_circumference / (math.pi * user_height_cm))**2))**0.5
-
-        print(f"Circonférence de la taille : {waist_circumference:.2f} cm")
-        print(f"BRI calculé : {BRI:.2f}")
-        return BRI
-    else:
-        print("Impossible de calculer le BRI. Vérifiez les images.")
+    # 1. Vérification de la taille
+    try:
+        user_height_cm = float(user_height_cm)
+    except (TypeError, ValueError):
+        print("Erreur : la taille doit être un nombre.")
         return None
 
+    if not math.isfinite(user_height_cm) or user_height_cm <= 0:
+        print("Erreur : la taille doit être positive et finie.")
+        return None
+
+    # 2. Vérification des chemins
+    if not image_path_side or not image_path_front:
+        print("Erreur : les deux chemins d'images sont requis.")
+        return None
+
+    try:
+        # 3. Mesures extraites des images
+        profondeur = mesurer_profondeur_taille(
+            image_path_side,
+            user_height_cm,
+            f"{image_name}_profil"
+        )
+
+        largeur = mesurer_largeur_taille(
+            image_path_front,
+            user_height_cm,
+            f"{image_name}_face"
+        )
+
+    except Exception as e:
+        print(f"Erreur lors de la mesure : {e}")
+        return None
+
+    # 4. Validation des mesures
+    if profondeur is None or largeur is None:
+        print("Erreur : impossible de mesurer la taille.")
+        return None
+
+    try:
+        profondeur = float(profondeur)
+        largeur = float(largeur)
+    except (TypeError, ValueError):
+        print("Erreur : les mesures doivent être numériques.")
+        return None
+
+    if (
+        not math.isfinite(profondeur)
+        or not math.isfinite(largeur)
+        or profondeur <= 0
+        or largeur <= 0
+    ):
+        print("Erreur : mesures invalides.")
+        return None
+
+    # 5. Estimation de la circonférence par une ellipse
+    # Hypothèse : largeur et profondeur sont des diamètres en cm.
+    a = largeur / 2.0
+    b = profondeur / 2.0
+
+    waist_circumference = 2.0 * math.pi * math.sqrt(
+        (a**2 + b**2) / 2.0
+    )
+
+    # 6. Vérification du domaine mathématique
+    ratio = waist_circumference / (
+        math.pi * user_height_cm
+    )
+
+    if ratio >= 1.0:
+        print(
+            "Erreur : circonférence incompatible avec "
+            "la taille pour cette formule."
+        )
+        return None
+
+    # 7. Calcul du BRI : formule originale
+    BRI = 364.2 - 365.5 * math.sqrt(
+        1.0 - ratio**2
+    )
+
+    # 8. Résultats
+    resultats = {
+        "taille_cm": user_height_cm,
+        "largeur_taille_cm": largeur,
+        "profondeur_taille_cm": profondeur,
+        "circonference_taille_cm": waist_circumference,
+        "BRI": BRI
+    }
+
+    print("\n--- Résultats CircumFit ---")
+    print(f"Taille : {user_height_cm:.2f} cm")
+    print(f"Largeur de taille : {largeur:.2f} cm")
+    print(f"Profondeur de taille : {profondeur:.2f} cm")
+    print(
+        f"Circonférence estimée : "
+        f"{waist_circumference:.2f} cm"
+    )
+    print(f"BRI calculé : {BRI:.2f}")
+
+    return resultats
+
+
 # Exemple d'utilisation
-user_height_cm = 180 # taille réelle de l'individu
-image_path_side= r"C:\Users\elias\Downloads\demo_profil.jpg"
-image_path_front = r"C:\Users\elias\Downloads\demo_face.jpg"
-calculer_bri(image_path_side, image_path_front, user_height_cm)
+if __name__ == "__main__":
+
+    user_height_cm = 180
+
+    image_path_side = r"C:\Users\elias\Downloads\demo_profil.jpg"
+    image_path_front = r"C:\Users\elias\Downloads\demo_face.jpg"
+
+    resultats = calculer_bri(
+        image_path_side,
+        image_path_front,
+        user_height_cm
+    )
