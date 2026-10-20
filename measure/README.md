@@ -1,5 +1,11 @@
 Cette API calcule la circonférence de la taille et l'indice de rondeur corporelle (BRI) à partir de deux images (vue frontale et vue latérale) et de la taille de l'utilisateur. Elle est déployée sur un serveur accessible publiquement.
 
+Pour calculer le BRI, `/calculate-bri` reçoit les photos ainsi que les champs
+`patient_id` (pseudonyme accepté), `sex` (`Male` ou `Female`), `age`,
+`weight_kg` et `user_height_cm` (de 100 à 230 cm). L'identifiant, le sexe,
+l'âge et le poids sont transmis et validés, mais ne sont ni enregistrés ni
+utilisés dans la formule actuelle du BRI.
+
 L'API est déployée sur : https://circumfit.onrender.com
 endpoint (/calculate-bri) : https://circumfit.onrender.com/calculate-bri
  

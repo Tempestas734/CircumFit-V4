@@ -9,12 +9,21 @@ class CheckDetailPage extends StatefulWidget {
 
 class CheckDetailPageState extends State<CheckDetailPage> {
   String? selectedGender;
-  final TextEditingController nameController = TextEditingController();
+  final TextEditingController patientIdController = TextEditingController();
   final TextEditingController heightController = TextEditingController();
   final TextEditingController weightController = TextEditingController();
   final TextEditingController ageController = TextEditingController();
 
   bool showErrors = false;
+
+  @override
+  void dispose() {
+    patientIdController.dispose();
+    heightController.dispose();
+    weightController.dispose();
+    ageController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -78,10 +87,11 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildTextField(
-                      label: "Name",
-                      hint: "Enter your name",
-                      controller: nameController,
+                      label: "Patient ID",
+                      hint: "Enter an ID or pseudonym",
+                      controller: patientIdController,
                       icon: Icons.person_outline,
+                      isRequired: true,
                     ),
                     const SizedBox(height: 20),
                     _buildTextField(
@@ -89,7 +99,8 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                       hint: "Enter your height",
                       controller: heightController,
                       icon: Icons.height,
-                      inputType: TextInputType.number,
+                      inputType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       isRequired: true, // Indique que ce champ est obligatoire
                     ),
                     const SizedBox(height: 20),
@@ -98,7 +109,9 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                       hint: "Enter your weight",
                       controller: weightController,
                       icon: Icons.monitor_weight_outlined,
-                      inputType: TextInputType.number,
+                      inputType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      isRequired: true,
                     ),
                     const SizedBox(height: 20),
                     _buildTextField(
@@ -107,6 +120,7 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                       controller: ageController,
                       icon: Icons.cake_outlined,
                       inputType: TextInputType.number,
+                      isRequired: true,
                     ),
                     const SizedBox(height: 20),
                     const Text(
@@ -126,6 +140,14 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                         _buildGenderButton("Female"),
                       ],
                     ),
+                    if (showErrors && selectedGender == null)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text(
+                          "Please select a sex.",
+                          style: TextStyle(color: Colors.red, fontSize: 12),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -224,19 +246,24 @@ class CheckDetailPageState extends State<CheckDetailPage> {
             fillColor: Colors.white,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Colors.grey), // Contour gris par défaut
+              borderSide: const BorderSide(
+                  color: Colors.grey), // Contour gris par défaut
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Colors.blue, width: 2), // Contour bleu pour la case active
+              borderSide: const BorderSide(
+                  color: Colors.blue,
+                  width: 2), // Contour bleu pour la case active
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Colors.grey), // Contour gris pour les cases inactives
+              borderSide: const BorderSide(
+                  color: Colors.grey), // Contour gris pour les cases inactives
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Colors.red), // Contour rouge en cas d'erreur
+              borderSide: const BorderSide(
+                  color: Colors.red), // Contour rouge en cas d'erreur
             ),
             errorText: showErrors || controller.text.isNotEmpty
                 ? _getErrorText(label, controller.text)
@@ -248,34 +275,35 @@ class CheckDetailPageState extends State<CheckDetailPage> {
     );
   }
 
-
   String? _getErrorText(String field, String value) {
-    if (value.isEmpty) {
-      if (field == "Height (cm)") {
-        return 'Please fill out the $field field.';
-      }
-      return null; // Les autres champs ne sont pas obligatoires.
+    if (value.trim().isEmpty) {
+      return field == "Patient ID"
+          ? "Please enter a patient ID or pseudonym."
+          : "Please fill out the $field field.";
     }
 
-    if (field == "Height (cm)" || field == "Weight (kg)" || field == "Age") {
-      if (!RegExp(r'^\d+$').hasMatch(value)) {
-        return '$field must contain only numbers.';
+    if (field == "Height (cm)") {
+      final height = double.tryParse(value);
+      if (height == null || !height.isFinite) {
+        return "$field must be a valid number.";
       }
-      final num parsedValue = double.parse(value);
-      if (parsedValue <= 0) {
-        return '$field must be greater than 0.';
+      if (height < 100 || height > 230) {
+        return "$field must be between 100 and 230 cm.";
       }
-    }
-
-    if (field == "Name") {
-      if (!RegExp(r'^[a-zA-Z\s]+$').hasMatch(value)) {
-        return 'Name must contain only letters.';
+    } else if (field == "Weight (kg)") {
+      final weight = double.tryParse(value);
+      if (weight == null || !weight.isFinite || weight <= 0) {
+        return "$field must be a positive number.";
+      }
+    } else if (field == "Age") {
+      final age = int.tryParse(value);
+      if (age == null || age <= 0) {
+        return "$field must be a positive whole number.";
       }
     }
 
     return null;
   }
-
 
   Widget _buildGenderButton(String gender) {
     bool isSelected = selectedGender == gender;
@@ -299,26 +327,12 @@ class CheckDetailPageState extends State<CheckDetailPage> {
   }
 
   bool _validateInputs() {
-    if (heightController.text.isEmpty || _getErrorText("Height (cm)", heightController.text) != null) {
-      return false; // Si "Height (cm)" est vide ou invalide.
-    }
-
-    // Valider les autres champs seulement s'ils sont remplis.
-    if (nameController.text.isNotEmpty && _getErrorText("Name", nameController.text) != null) {
-      return false;
-    }
-    if (weightController.text.isNotEmpty && _getErrorText("Weight (kg)", weightController.text) != null) {
-      return false;
-    }
-    if (ageController.text.isNotEmpty && _getErrorText("Age", ageController.text) != null) {
-      return false;
-    }
-
-    return true;
+    return selectedGender != null &&
+        _getErrorText("Patient ID", patientIdController.text) == null &&
+        _getErrorText("Height (cm)", heightController.text) == null &&
+        _getErrorText("Weight (kg)", weightController.text) == null &&
+        _getErrorText("Age", ageController.text) == null;
   }
-
-
-
 
   void _showPhotoOptions(BuildContext context) {
     showDialog(
@@ -333,7 +347,8 @@ class CheckDetailPageState extends State<CheckDetailPage> {
             padding: const EdgeInsets.all(20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center, // Centre les éléments principaux
+              crossAxisAlignment:
+                  CrossAxisAlignment.center, // Centre les éléments principaux
               children: [
                 const Icon(Icons.info_outline, color: Colors.blue, size: 24),
                 const SizedBox(height: 10),
@@ -350,7 +365,8 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                 const Divider(color: Colors.grey),
                 const SizedBox(height: 20),
                 Column(
-                  crossAxisAlignment: CrossAxisAlignment.start, // Alignement à gauche des instructions
+                  crossAxisAlignment: CrossAxisAlignment
+                      .start, // Alignement à gauche des instructions
                   children: [
                     _buildInstruction(1, "Ensure proper lighting."),
                     const SizedBox(height: 10),
@@ -358,9 +374,11 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                     const SizedBox(height: 10),
                     _buildInstruction(3, "Wear tight clothing or underwear."),
                     const SizedBox(height: 10),
-                    _buildInstruction(4, "For the front photo: Stand straight with arms at 45° and feet shoulder-width apart."),
+                    _buildInstruction(4,
+                        "For the front photo: Stand straight with arms at 45° and feet shoulder-width apart."),
                     const SizedBox(height: 10),
-                    _buildInstruction(5, "For the side photo: Stand straight with feet together and arms at 90°."),
+                    _buildInstruction(5,
+                        "For the side photo: Stand straight with feet together and arms at 90°."),
                   ],
                 ),
                 const SizedBox(height: 30),
@@ -372,6 +390,10 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                       MaterialPageRoute(
                         builder: (context) => FaceProfilePhotosPage(
                           userHeight: double.parse(heightController.text),
+                          patientId: patientIdController.text.trim(),
+                          sex: selectedGender!,
+                          age: int.parse(ageController.text),
+                          weightKg: double.parse(weightController.text),
                         ),
                       ),
                     );
@@ -420,7 +442,7 @@ class CheckDetailPageState extends State<CheckDetailPage> {
               color: Colors.black87,
               height: 1.5,
             ),
-             textAlign: TextAlign.justify, // Justification du texte
+            textAlign: TextAlign.justify, // Justification du texte
           ),
         ),
       ],

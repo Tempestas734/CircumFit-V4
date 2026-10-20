@@ -177,12 +177,50 @@ def calculer_bri(image_path_side, image_path_front, user_height_cm):
 @app.route('/calculate-bri', methods=['POST'])
 def calculate_bri():
     try:
-        # Vérifier si les fichiers et la hauteur sont présents dans la requête
-        if 'user_height_cm' not in request.form or 'image_side' not in request.files or 'image_front' not in request.files:
-            return jsonify({"error": "Missing required data (user_height_cm, image_side, image_front)"}), 400
+        required_fields = (
+            'patient_id',
+            'sex',
+            'age',
+            'weight_kg',
+            'user_height_cm',
+        )
+        missing_fields = [
+            field for field in required_fields if not request.form.get(field)
+        ]
+        if (
+            missing_fields
+            or 'image_side' not in request.files
+            or 'image_front' not in request.files
+        ):
+            return jsonify({
+                "error": "Missing required patient data or images.",
+                "missing_fields": missing_fields,
+            }), 400
 
-        # Récupérer les données
-        user_height_cm = float(request.form['user_height_cm'])
+        # Valider les données patient transmises par le formulaire.
+        patient_id = request.form['patient_id'].strip()
+        sex = request.form['sex'].strip().lower()
+        try:
+            user_height_cm = float(request.form['user_height_cm'])
+            age = int(request.form['age'])
+            weight_kg = float(request.form['weight_kg'])
+        except ValueError:
+            return jsonify({
+                "error": "Height, age, and weight must be valid numbers."
+            }), 400
+        if not patient_id:
+            return jsonify({"error": "Patient ID must not be empty."}), 400
+        if sex not in {'male', 'female'}:
+            return jsonify({"error": "Sex must be male or female."}), 400
+        if not math.isfinite(user_height_cm) or not 100 <= user_height_cm <= 230:
+            return jsonify({
+                "error": "Height must be between 100 and 230 cm."
+            }), 400
+        if age <= 0:
+            return jsonify({"error": "Age must be a positive whole number."}), 400
+        if not math.isfinite(weight_kg) or weight_kg <= 0:
+            return jsonify({"error": "Weight must be a positive number."}), 400
+
         image_side = request.files['image_side']
         image_front = request.files['image_front']
 

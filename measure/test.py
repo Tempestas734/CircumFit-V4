@@ -6,7 +6,11 @@ files = {
     'image_front': open(r'C:\Users\elias\Downloads\photo_front_germine.jpg', 'rb')
 }
 data = {
-    'user_height_cm': '163'
+    'user_height_cm': '163',
+    'patient_id': 'test-patient',
+    'sex': 'Female',
+    'age': '30',
+    'weight_kg': '60'
 }
 
 response = requests.post(url, files=files, data=data)

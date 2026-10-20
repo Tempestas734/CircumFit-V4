@@ -6,10 +6,18 @@ import 'dart:convert';
 
 class FaceProfilePhotosPage extends StatefulWidget {
   final double userHeight;
+  final String patientId;
+  final String sex;
+  final int age;
+  final double weightKg;
 
   const FaceProfilePhotosPage({
     super.key,
     required this.userHeight,
+    required this.patientId,
+    required this.sex,
+    required this.age,
+    required this.weightKg,
   });
 
   @override
@@ -77,8 +85,12 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
           'https://circumfit.onrender.com/calculate-bri'); //URL publique de l'API
       final request = http.MultipartRequest('POST', uri);
 
-      // Ajouter les images et la taille
+      // Ajouter les données patient et les images
       request.fields['user_height_cm'] = widget.userHeight.toString();
+      request.fields['patient_id'] = widget.patientId;
+      request.fields['sex'] = widget.sex;
+      request.fields['age'] = widget.age.toString();
+      request.fields['weight_kg'] = widget.weightKg.toString();
       request.files.add(
         http.MultipartFile.fromBytes(
           'image_side',
