@@ -73,120 +73,125 @@ class ConsentPageState extends State<ConsentPage> {
         ),
       ),
       body: SafeArea(
-        child: ListView(
+        // SingleChildScrollView + Column (et non ListView) : tout l'écran est
+        // construit d'un coup, boutons compris, même s'ils sont hors écran.
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.badge_outlined, color: Colors.blue),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Patient : ${widget.patientId}',
-                      key: const Key('consent_patient_id'),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              ConsentText.intro,
-              style: TextStyle(fontSize: 14, color: Colors.black54, height: 1.4),
-            ),
-            const SizedBox(height: 12),
-            for (var i = 0; i < ConsentText.statements.length; i++)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Material(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  child: CheckboxListTile(
-                    key: Key('consent_check_$i'),
-                    value: _checks[i],
-                    onChanged: (value) =>
-                        setState(() => _checks[i] = value ?? false),
-                    controlAffinity: ListTileControlAffinity.leading,
-                    activeColor: Colors.blue,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.badge_outlined, color: Colors.blue),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Patient : ${widget.patientId}',
+                        key: const Key('consent_patient_id'),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
                     ),
-                    title: Text(
-                      ConsentText.statements[i],
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.black87,
-                        height: 1.4,
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                ConsentText.intro,
+                style: TextStyle(fontSize: 14, color: Colors.black54, height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              for (var i = 0; i < ConsentText.statements.length; i++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    child: CheckboxListTile(
+                      key: Key('consent_check_$i'),
+                      value: _checks[i],
+                      onChanged: (value) =>
+                          setState(() => _checks[i] = value ?? false),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      activeColor: Colors.blue,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      title: Text(
+                        ConsentText.statements[i],
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black87,
+                          height: 1.4,
+                        ),
                       ),
                     ),
                   ),
                 ),
+              const SizedBox(height: 8),
+              Text(
+                "La date et l'heure du consentement seront enregistrées "
+                'avec la mesure (texte ${ConsentText.version}).',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
               ),
-            const SizedBox(height: 8),
-            Text(
-              "La date et l'heure du consentement seront enregistrées "
-              'avec la mesure (texte ${ConsentText.version}).',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              height: 50,
-              child: ElevatedButton(
-                key: const Key('consent_accept'),
-                onPressed: _complete ? _accept : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: Colors.grey[300],
-                  disabledForegroundColor: Colors.grey[600],
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+              const SizedBox(height: 24),
+              SizedBox(
+                height: 50,
+                child: ElevatedButton(
+                  key: const Key('consent_accept'),
+                  onPressed: _complete ? _accept : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey[300],
+                    disabledForegroundColor: Colors.grey[600],
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
                   ),
-                ),
-                child: const FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    'Le patient consent',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 46,
-              child: OutlinedButton(
-                key: const Key('consent_refuse'),
-                onPressed: _refuse,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  side: const BorderSide(color: Colors.red),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                ),
-                child: const FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    'Le patient refuse',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Le patient consent',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 46,
+                child: OutlinedButton(
+                  key: const Key('consent_refuse'),
+                  onPressed: _refuse,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                  ),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Le patient refuse',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
