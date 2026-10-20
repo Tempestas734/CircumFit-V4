@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'results_page.dart';
+import 'photo_tutorial_page.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
@@ -348,8 +349,22 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
                       icon: Icons.camera_alt,
                       label: "Camera",
                       onTap: () async {
+                        Navigator.pop(context);
+                        if (type == ImageType.front) {
+                          final understood = await showPhotoTutorial(
+                            context,
+                            view: PoseView.face,
+                            heightCm: widget.userHeight,
+                          );
+                          if (!mounted || !understood) {
+                            return;
+                          }
+                        }
                         final XFile? image =
                             await _picker.pickImage(source: ImageSource.camera);
+                        if (!mounted) {
+                          return;
+                        }
                         if (image != null) {
                           setState(() {
                             if (type == ImageType.front) {
@@ -358,9 +373,6 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
                               _sideImage = image;
                             }
                           });
-                        }
-                        if (mounted) {
-                          Navigator.pop(context);
                         }
                       },
                     ),
