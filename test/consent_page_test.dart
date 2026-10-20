@@ -33,8 +33,10 @@ void main() {
   late bool returned;
 
   Future<void> openConsent(WidgetTester tester) async {
-    tester.view.physicalSize = const Size(1080, 2400);
-    tester.view.devicePixelRatio = 3;
+    // 600 x 1200 points logiques : la police de test (chaque lettre est un
+    // carré de la taille de la police) est bien plus large que la vraie.
+    tester.view.physicalSize = const Size(1200, 2400);
+    tester.view.devicePixelRatio = 2;
     addTearDown(tester.view.reset);
     returned = false;
     result = null;

@@ -53,12 +53,17 @@ class ConsentPageState extends State<ConsentPage> {
                     onPressed: _refuse,
                   ),
                   const SizedBox(width: 10),
-                  const Text(
-                    ConsentText.title,
-                    style: TextStyle(
-                      color: Colors.black54,
-                      fontSize: 20,
-                      fontWeight: FontWeight.normal,
+                  // Expanded + ellipsis : pas de débordement sur petit écran.
+                  const Expanded(
+                    child: Text(
+                      ConsentText.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.black54,
+                        fontSize: 20,
+                        fontWeight: FontWeight.normal,
+                      ),
                     ),
                   ),
                 ],
@@ -150,9 +155,12 @@ class ConsentPageState extends State<ConsentPage> {
                     borderRadius: BorderRadius.circular(15),
                   ),
                 ),
-                child: const Text(
-                  'Le patient consent',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                child: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Le patient consent',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
             ),
@@ -169,9 +177,12 @@ class ConsentPageState extends State<ConsentPage> {
                     borderRadius: BorderRadius.circular(15),
                   ),
                 ),
-                child: const Text(
-                  'Le patient refuse',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                child: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Le patient refuse',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
             ),
