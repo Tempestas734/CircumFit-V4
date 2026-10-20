@@ -32,7 +32,8 @@ def mesurer_profondeur_taille(image_path, user_height_cm, image_name="output"):
         image_name: Nom pour sauvegarder l'image annotée.
 
     Returns:
-        Largeur de la taille en centimètres ou None si les points clés ne sont pas détectés.
+        Largeur complète de la taille en centimètres (pas un demi-axe),
+        ou None si les points clés ne sont pas détectés.
     """
     # Charger l'image
     image = cv2.imread(image_path)
@@ -119,7 +120,8 @@ def mesurer_largeur_taille(image_path, user_height_cm, image_name="output"):
         image_name: Nom pour sauvegarder l'image annotée.
 
     Returns:
-        Largeur de la taille en centimètres ou None si les points clés ne sont pas détectés.
+        Largeur complète de la taille en centimètres (pas un demi-axe),
+        ou None si les points clés ne sont pas détectés.
     """
     # Charger l'image
     image = cv2.imread(image_path)
@@ -239,52 +241,50 @@ def calculer_bri(
         print("Erreur : les deux chemins d'images sont requis.")
         return None
 
+    # Les fonctions de mesure renvoient les largeurs complètes, en cm.
     try:
-        # 3. Mesures extraites des images
-        profondeur = mesurer_profondeur_taille(
+        profondeur_laterale_cm = mesurer_profondeur_taille(
             image_path_side,
             user_height_cm,
             f"{image_name}_profil"
         )
-
-        largeur = mesurer_largeur_taille(
+        largeur_frontale_cm = mesurer_largeur_taille(
             image_path_front,
             user_height_cm,
             f"{image_name}_face"
         )
-
     except Exception as e:
         print(f"Erreur lors de la mesure : {e}")
         return None
 
     # 4. Validation des mesures
-    if profondeur is None or largeur is None:
+    if profondeur_laterale_cm is None or largeur_frontale_cm is None:
         print("Erreur : impossible de mesurer la taille.")
         return None
 
     try:
-        profondeur = float(profondeur)
-        largeur = float(largeur)
+        profondeur_laterale_cm = float(profondeur_laterale_cm)
+        largeur_frontale_cm = float(largeur_frontale_cm)
     except (TypeError, ValueError):
         print("Erreur : les mesures doivent être numériques.")
         return None
 
     if (
-        not math.isfinite(profondeur)
-        or not math.isfinite(largeur)
-        or profondeur <= 0
-        or largeur <= 0
+        not math.isfinite(profondeur_laterale_cm)
+        or not math.isfinite(largeur_frontale_cm)
+        or profondeur_laterale_cm <= 0
+        or largeur_frontale_cm <= 0
     ):
         print("Erreur : mesures invalides.")
         return None
 
     # 5. Estimation de la circonférence par une ellipse
-    # Hypothèse : largeur et profondeur sont des diamètres en cm.
-    a = largeur / 2.0
-    b = profondeur / 2.0
+    # r1 et r2 sont les demi-axes, calculés à partir des largeurs complètes.
+    r1 = largeur_frontale_cm / 2.0  # demi-axe frontal
+    r2 = profondeur_laterale_cm / 2.0  # demi-axe latéral
 
     waist_circumference = 2.0 * math.pi * math.sqrt(
-        (a**2 + b**2) / 2.0
+        (r1**2 + r2**2) / 2.0
     )
 
     # 6. Vérification du domaine mathématique
@@ -307,16 +307,16 @@ def calculer_bri(
     # 8. Résultats
     resultats = {
         "taille_cm": user_height_cm,
-        "largeur_taille_cm": largeur,
-        "profondeur_taille_cm": profondeur,
+        "largeur_taille_cm": largeur_frontale_cm,
+        "profondeur_taille_cm": profondeur_laterale_cm,
         "circonference_taille_cm": waist_circumference,
         "BRI": BRI
     }
 
     print("\n--- Résultats CircumFit ---")
     print(f"Taille : {user_height_cm:.2f} cm")
-    print(f"Largeur de taille : {largeur:.2f} cm")
-    print(f"Profondeur de taille : {profondeur:.2f} cm")
+    print(f"Largeur complète de taille : {largeur_frontale_cm:.2f} cm")
+    print(f"Profondeur complète de taille : {profondeur_laterale_cm:.2f} cm")
     print(
         f"Circonférence estimée : "
         f"{waist_circumference:.2f} cm"

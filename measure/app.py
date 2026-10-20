@@ -20,7 +20,8 @@ def mesurer_profondeur_taille(image_path, user_height_cm):
         user_height_cm: Hauteur réelle de la personne en centimètres.
 
     Returns:
-        Largeur de la taille en centimètres ou None si les points clés ne sont pas détectés.
+        Largeur complète de la taille en centimètres (pas un demi-axe),
+        ou None si les points clés ne sont pas détectés.
     """
     # Charger l'image
     image = cv2.imread(image_path)
@@ -89,7 +90,8 @@ def mesurer_largeur_taille(image_path, user_height_cm):
         user_height_cm: Hauteur réelle de la personne en centimètres.
 
     Returns:
-        Largeur de la taille en centimètres ou None si les points clés ne sont pas détectés.
+        Largeur complète de la taille en centimètres (pas un demi-axe),
+        ou None si les points clés ne sont pas détectés.
     """
     # Charger l'image
     image = cv2.imread(image_path)
@@ -150,13 +152,20 @@ def mesurer_largeur_taille(image_path, user_height_cm):
 
 
 def calculer_bri(image_path_side, image_path_front, user_height_cm):
-    waist_width_side = mesurer_profondeur_taille(image_path_side, user_height_cm)
-    waist_width_front = mesurer_largeur_taille(image_path_front, user_height_cm)
+    profondeur_laterale_cm = mesurer_profondeur_taille(
+        image_path_side, user_height_cm
+    )
+    largeur_frontale_cm = mesurer_largeur_taille(
+        image_path_front, user_height_cm
+    )
 
-    if waist_width_side and waist_width_front:
-        # Calcul de la circonférence de la taille avec la formule de l'ellipse
-        r1, r2 = waist_width_front / 2, waist_width_side / 2
-        waist_circumference = 2 * math.pi * math.sqrt((r1**2 + r2**2) / 2)
+    if profondeur_laterale_cm and largeur_frontale_cm:
+        # r1 et r2 sont les demi-axes, calculés à partir des largeurs complètes.
+        r1 = largeur_frontale_cm / 2  # demi-axe frontal
+        r2 = profondeur_laterale_cm / 2  # demi-axe latéral
+        waist_circumference = 2 * math.pi * math.sqrt(
+            (r1**2 + r2**2) / 2
+        )
 
         # Calcul du BRI
         BRI = 364.2 - 365.5 * ((1 - (waist_circumference / (math.pi * user_height_cm))**2))**0.5
