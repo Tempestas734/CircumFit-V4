@@ -4,6 +4,7 @@ import 'results_page.dart';
 import 'photo_tutorial_page.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'guided_camera_page.dart';
 
 class FaceProfilePhotosPage extends StatefulWidget {
   final double userHeight;
@@ -360,20 +361,32 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
                         if (!mounted || !understood) {
                           return;
                         }
-                        final XFile? image =
-                            await _picker.pickImage(source: ImageSource.camera);
-                        if (!mounted) {
+                        final imagePath = await Navigator.of(context)
+                            .push<String>(
+                          MaterialPageRoute(
+                            builder: (_) => GuidedCameraPage(
+                              frameWidthRatio:
+                                  type == ImageType.front ? 0.66 : 0.55,
+                              frameHeightRatio:
+                                  type == ImageType.front ? 0.62 : 0.66,
+                              hintText: type == ImageType.front
+                                  ? "Alignez-vous de face dans le cadre"
+                                  : "Alignez-vous de profil dans le cadre",
+                              showGrid: true,
+                            ),
+                          ),
+                        );
+                        if (!mounted || imagePath == null) {
                           return;
                         }
-                        if (image != null) {
-                          setState(() {
-                            if (type == ImageType.front) {
-                              _frontImage = image;
-                            } else {
-                              _sideImage = image;
-                            }
-                          });
-                        }
+                        final image = XFile(imagePath);
+                        setState(() {
+                          if (type == ImageType.front) {
+                            _frontImage = image;
+                          } else {
+                            _sideImage = image;
+                          }
+                        });
                       },
                     ),
                     _buildOptionButton(
