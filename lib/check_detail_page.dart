@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'face_profile_photos_page.dart';
+import 'utils/patient_validators.dart';
+
+// Chiffres + un séparateur décimal (point ou virgule, clavier iPhone FR).
+final _decimalInput = FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'));
 
 class CheckDetailPage extends StatefulWidget {
   const CheckDetailPage({super.key});
@@ -92,6 +97,10 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                       controller: patientIdController,
                       icon: Icons.person_outline,
                       isRequired: true,
+                      validator: validatePatientId,
+                      maxLength: PatientLimits.maxPatientIdLength,
+                      helperText:
+                          "Use a pseudonym (e.g. P042), never the patient's name.",
                     ),
                     const SizedBox(height: 20),
                     _buildTextField(
@@ -102,6 +111,8 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                       inputType:
                           const TextInputType.numberWithOptions(decimal: true),
                       isRequired: true, // Indique que ce champ est obligatoire
+                      validator: validateHeight,
+                      inputFormatters: [_decimalInput],
                     ),
                     const SizedBox(height: 20),
                     _buildTextField(
@@ -112,6 +123,8 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                       inputType:
                           const TextInputType.numberWithOptions(decimal: true),
                       isRequired: true,
+                      validator: validateWeight,
+                      inputFormatters: [_decimalInput],
                     ),
                     const SizedBox(height: 20),
                     _buildTextField(
@@ -121,6 +134,11 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                       icon: Icons.cake_outlined,
                       inputType: TextInputType.number,
                       isRequired: true,
+                      validator: validateAge,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(3),
+                      ],
                     ),
                     const SizedBox(height: 20),
                     const Text(
@@ -140,12 +158,13 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                         _buildGenderButton("Female"),
                       ],
                     ),
-                    if (showErrors && selectedGender == null)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
+                    if (showErrors && validateSex(selectedGender) != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
                         child: Text(
-                          "Please select a sex.",
-                          style: TextStyle(color: Colors.red, fontSize: 12),
+                          validateSex(selectedGender)!,
+                          style:
+                              const TextStyle(color: Colors.red, fontSize: 12),
                         ),
                       ),
                   ],
@@ -212,6 +231,10 @@ class CheckDetailPageState extends State<CheckDetailPage> {
     required IconData icon,
     TextInputType inputType = TextInputType.text,
     bool isRequired = false, // Ajout pour indiquer si un champ est obligatoire
+    required String? Function(String) validator,
+    List<TextInputFormatter>? inputFormatters,
+    int? maxLength,
+    String? helperText,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -237,10 +260,16 @@ class CheckDetailPageState extends State<CheckDetailPage> {
         TextField(
           controller: controller,
           keyboardType: inputType,
+          inputFormatters: inputFormatters,
+          maxLength: maxLength,
+          autocorrect: false,
           cursorColor: Colors.blue,
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: const TextStyle(color: Colors.grey),
+            helperText: helperText,
+            helperMaxLines: 2,
+            errorMaxLines: 2,
             prefixIcon: Icon(icon, color: Colors.grey),
             filled: true,
             fillColor: Colors.white,
@@ -265,44 +294,16 @@ class CheckDetailPageState extends State<CheckDetailPage> {
               borderSide: const BorderSide(
                   color: Colors.red), // Contour rouge en cas d'erreur
             ),
+            // Validation en temps réel dès que le champ contient du texte ;
+            // les champs vides ne sont signalés qu'après un appui sur Next.
             errorText: showErrors || controller.text.isNotEmpty
-                ? _getErrorText(label, controller.text)
+                ? validator(controller.text)
                 : null,
           ),
           onChanged: (value) => setState(() {}),
         ),
       ],
     );
-  }
-
-  String? _getErrorText(String field, String value) {
-    if (value.trim().isEmpty) {
-      return field == "Patient ID"
-          ? "Please enter a patient ID or pseudonym."
-          : "Please fill out the $field field.";
-    }
-
-    if (field == "Height (cm)") {
-      final height = double.tryParse(value);
-      if (height == null || !height.isFinite) {
-        return "$field must be a valid number.";
-      }
-      if (height < 100 || height > 230) {
-        return "$field must be between 100 and 230 cm.";
-      }
-    } else if (field == "Weight (kg)") {
-      final weight = double.tryParse(value);
-      if (weight == null || !weight.isFinite || weight <= 0) {
-        return "$field must be a positive number.";
-      }
-    } else if (field == "Age") {
-      final age = int.tryParse(value);
-      if (age == null || age <= 0) {
-        return "$field must be a positive whole number.";
-      }
-    }
-
-    return null;
   }
 
   Widget _buildGenderButton(String gender) {
@@ -327,11 +328,11 @@ class CheckDetailPageState extends State<CheckDetailPage> {
   }
 
   bool _validateInputs() {
-    return selectedGender != null &&
-        _getErrorText("Patient ID", patientIdController.text) == null &&
-        _getErrorText("Height (cm)", heightController.text) == null &&
-        _getErrorText("Weight (kg)", weightController.text) == null &&
-        _getErrorText("Age", ageController.text) == null;
+    return validateSex(selectedGender) == null &&
+        validatePatientId(patientIdController.text) == null &&
+        validateHeight(heightController.text) == null &&
+        validateWeight(weightController.text) == null &&
+        validateAge(ageController.text) == null;
   }
 
   void _showPhotoOptions(BuildContext context) {
@@ -385,15 +386,23 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                 ElevatedButton(
                   onPressed: () {
                     Navigator.pop(context);
+                    // Valeurs déjà validées par _validateInputs ; parseDecimal
+                    // gère la virgule (« 72,5 ») contrairement à double.parse.
+                    final height = parseDecimal(heightController.text);
+                    final weight = parseDecimal(weightController.text);
+                    final age = parseInteger(ageController.text);
+                    if (height == null || weight == null || age == null) {
+                      return;
+                    }
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => FaceProfilePhotosPage(
-                          userHeight: double.parse(heightController.text),
+                          userHeight: height,
                           patientId: patientIdController.text.trim(),
                           sex: selectedGender!,
-                          age: int.parse(ageController.text),
-                          weightKg: double.parse(weightController.text),
+                          age: age,
+                          weightKg: weight,
                         ),
                       ),
                     );
