@@ -350,15 +350,15 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
                       label: "Camera",
                       onTap: () async {
                         Navigator.pop(context);
-                        if (type == ImageType.front) {
-                          final understood = await showPhotoTutorial(
-                            context,
-                            view: PoseView.face,
-                            heightCm: widget.userHeight,
-                          );
-                          if (!mounted || !understood) {
-                            return;
-                          }
+                        final understood = await showPhotoTutorial(
+                          context,
+                          view: type == ImageType.front
+                              ? PoseView.face
+                              : PoseView.profil,
+                          heightCm: widget.userHeight,
+                        );
+                        if (!mounted || !understood) {
+                          return;
                         }
                         final XFile? image =
                             await _picker.pickImage(source: ImageSource.camera);
