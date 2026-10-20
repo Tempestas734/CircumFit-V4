@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'consent_page.dart';
 import 'face_profile_photos_page.dart';
+import 'utils/consent.dart';
 import 'utils/patient_validators.dart';
 
 // Chiffres + un séparateur décimal (point ou virgule, clavier iPhone FR).
@@ -384,7 +386,7 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                 ),
                 const SizedBox(height: 30),
                 ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async {
                     Navigator.pop(context);
                     // Valeurs déjà validées par _validateInputs ; parseDecimal
                     // gère la virgule (« 72,5 ») contrairement à double.parse.
@@ -394,15 +396,36 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                     if (height == null || weight == null || age == null) {
                       return;
                     }
+                    final patientId = patientIdController.text.trim();
+                    // F-03 : consentement horodaté obligatoire avant les photos.
+                    // this.context = contexte de la page (celui du dialogue
+                    // vient d'être fermé).
+                    final consent = await Navigator.push<ConsentRecord>(
+                      this.context,
+                      MaterialPageRoute(
+                        builder: (_) => ConsentPage(patientId: patientId),
+                      ),
+                    );
+                    if (!mounted) return;
+                    if (consent == null) {
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                              'Aucune photo sans consentement du patient.'),
+                        ),
+                      );
+                      return;
+                    }
                     Navigator.push(
-                      context,
+                      this.context,
                       MaterialPageRoute(
                         builder: (context) => FaceProfilePhotosPage(
                           userHeight: height,
-                          patientId: patientIdController.text.trim(),
+                          patientId: patientId,
                           sex: selectedGender!,
                           age: age,
                           weightKg: weight,
+                          consent: consent,
                         ),
                       ),
                     );

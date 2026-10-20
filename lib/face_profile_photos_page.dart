@@ -5,6 +5,7 @@ import 'photo_tutorial_page.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'guided_camera_page.dart';
+import 'utils/consent.dart';
 
 class FaceProfilePhotosPage extends StatefulWidget {
   final double userHeight;
@@ -13,6 +14,9 @@ class FaceProfilePhotosPage extends StatefulWidget {
   final int age;
   final double weightKg;
 
+  /// Consentement horodaté (F-03) : la page ne peut pas être ouverte sans.
+  final ConsentRecord consent;
+
   const FaceProfilePhotosPage({
     super.key,
     required this.userHeight,
@@ -20,6 +24,7 @@ class FaceProfilePhotosPage extends StatefulWidget {
     required this.sex,
     required this.age,
     required this.weightKg,
+    required this.consent,
   });
 
   @override
@@ -93,6 +98,10 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
       request.fields['sex'] = widget.sex;
       request.fields['age'] = widget.age.toString();
       request.fields['weight_kg'] = widget.weightKg.toString();
+      // F-03 : trace du consentement (consent_given, consent_timestamp,
+      // consent_version). Champs supplémentaires, ignorés si le serveur
+      // ne les lit pas.
+      request.fields.addAll(widget.consent.toFormFields());
       request.files.add(
         http.MultipartFile.fromBytes(
           'image_side',
@@ -176,6 +185,7 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _buildConsentBanner(),
               const SizedBox(height: 20),
               _buildPhotoSection(
                 label: "Front Photo",
@@ -318,7 +328,39 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
     );
   }
 
+  Widget _buildConsentBanner() {
+    return Container(
+      key: const Key('consent_banner'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.green.withAlpha(25),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.shade300),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.verified_user, color: Colors.green),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Consentement recueilli le '
+              '${formatConsentTimestamp(widget.consent.givenAtUtc)}',
+              style: const TextStyle(fontSize: 14, color: Colors.black87),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _pickImage(ImageType type) async {
+    // F-03 : garde-fou, le consentement doit concerner ce patient.
+    if (!widget.consent.coversPatient(widget.patientId)) {
+      _showErrorDialog(context,
+          message: 'Consentement manquant pour ce patient.');
+      return;
+    }
     showDialog(
       context: context,
       builder: (BuildContext context) {
