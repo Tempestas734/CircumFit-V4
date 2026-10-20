@@ -172,65 +172,73 @@ class _PhotoTutorialPageState extends State<PhotoTutorialPage>
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme.copyWith(
+      primary: Colors.blue,
+      secondary: Colors.blue,
+    );
     final data = _data;
     final last = _index == data.length - 1;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_face ? "Photo de face (1/2)" : "Photo de profil (2/2)"),
-        actions: [
-          if (!last) TextButton(onPressed: _done, child: const Text("Passer")),
-        ],
-      ),
-      body: PageView.builder(
-        controller: _pages,
-        itemCount: data.length,
-        onPageChanged: (i) => setState(() => _index = i),
-        itemBuilder: (_, i) => _buildPage(data[i], cs),
-      ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-        child: Row(
-          children: [
-            Visibility(
-              visible: _index > 0,
-              maintainSize: true,
-              maintainAnimation: true,
-              maintainState: true,
-              child: TextButton(
-                onPressed: () => _go(-1),
-                child: const Text("Précédent"),
-              ),
-            ),
-            Expanded(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  for (var i = 0; i < data.length; i++)
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      height: 8,
-                      width: i == _index ? 22 : 8,
-                      decoration: BoxDecoration(
-                        color: i == _index ? cs.primary : cs.outlineVariant,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            last
-                ? FilledButton.icon(
-                    onPressed: _done,
-                    icon: const Icon(Icons.photo_camera),
-                    label: const Text("Étape suivante"),
-                  )
-                : FilledButton(
-                    onPressed: () => _go(1),
-                    child: const Text("Suivant"),
-                  ),
+    return Theme(
+      data: theme.copyWith(colorScheme: cs),
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_face ? "Photo de face (1/2)" : "Photo de profil (2/2)"),
+          actions: [
+            if (!last)
+              TextButton(onPressed: _done, child: const Text("Passer")),
           ],
+        ),
+        body: PageView.builder(
+          controller: _pages,
+          itemCount: data.length,
+          onPageChanged: (i) => setState(() => _index = i),
+          itemBuilder: (_, i) => _buildPage(data[i], cs),
+        ),
+        bottomNavigationBar: SafeArea(
+          minimum: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+          child: Row(
+            children: [
+              Visibility(
+                visible: _index > 0,
+                maintainSize: true,
+                maintainAnimation: true,
+                maintainState: true,
+                child: TextButton(
+                  onPressed: () => _go(-1),
+                  child: const Text("Précédent"),
+                ),
+              ),
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < data.length; i++)
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        height: 8,
+                        width: i == _index ? 22 : 8,
+                        decoration: BoxDecoration(
+                          color: i == _index ? cs.primary : cs.outlineVariant,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              last
+                  ? FilledButton.icon(
+                      onPressed: _done,
+                      icon: const Icon(Icons.photo_camera),
+                      label: const Text("Étape suivante"),
+                    )
+                  : FilledButton(
+                      onPressed: () => _go(1),
+                      child: const Text("Suivant"),
+                    ),
+            ],
+          ),
         ),
       ),
     );
