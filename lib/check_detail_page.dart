@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'consent_page.dart';
 import 'face_profile_photos_page.dart';
 import 'utils/consent.dart';
+import 'utils/patient_repository.dart';
 import 'utils/patient_validators.dart';
 
 // Chiffres + un séparateur décimal (point ou virgule, clavier iPhone FR).
@@ -22,6 +23,9 @@ class CheckDetailPageState extends State<CheckDetailPage> {
   final TextEditingController ageController = TextEditingController();
 
   bool showErrors = false;
+
+  // F-04 : la fiche patient est enregistrée sur l'appareil à l'appui sur Next.
+  final _patients = PatientRepository();
 
   @override
   void dispose() {
@@ -193,13 +197,15 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                     ],
                   ),
                   child: ElevatedButton(
-                    onPressed: () {
+                    onPressed: () async {
                       setState(() {
                         showErrors = true;
                       });
-                      if (_validateInputs()) {
-                        _showPhotoOptions(context);
-                      }
+                      if (!_validateInputs()) return;
+                      final proceed = await _savePatientRecord();
+                      if (!proceed) return;
+                      if (!context.mounted) return;
+                      _showPhotoOptions(context);
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.transparent,
@@ -335,6 +341,85 @@ class CheckDetailPageState extends State<CheckDetailPage> {
         validateHeight(heightController.text) == null &&
         validateWeight(weightController.text) == null &&
         validateAge(ageController.text) == null;
+  }
+
+  /// F-04 : crée la fiche patient, ou la met à jour si l'identifiant existe
+  /// déjà avec d'autres valeurs (après confirmation).
+  ///
+  /// Renvoie false seulement si l'utilisateur annule la mise à jour : il
+  /// reste alors sur le formulaire. Une erreur de stockage n'empêche pas la
+  /// mesure : elle est signalée et le parcours continue.
+  Future<bool> _savePatientRecord() async {
+    final patientId = patientIdController.text.trim();
+    final sex = selectedGender!;
+    final age = parseInteger(ageController.text)!;
+    final weight = parseDecimal(weightController.text)!;
+    final height = parseDecimal(heightController.text)!;
+    try {
+      final existing = await _patients.find(patientId);
+      if (existing == null) {
+        await _patients.create(
+          patientId: patientId,
+          sex: sex,
+          age: age,
+          weightKg: weight,
+          heightCm: height,
+        );
+        return true;
+      }
+      if (existing.hasSameDataAs(
+        patientId: patientId,
+        sex: sex,
+        age: age,
+        weightKg: weight,
+        heightCm: height,
+      )) {
+        return true;
+      }
+      if (!mounted) return false;
+      final update = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Update patient record?'),
+          content: Text(
+            'A record already exists for ${existing.patientId} with other '
+            'values. Replace them with the values entered?',
+          ),
+          actions: [
+            TextButton(
+              key: const Key('record_update_cancel'),
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              key: const Key('record_update_confirm'),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Update'),
+            ),
+          ],
+        ),
+      );
+      if (update != true) return false;
+      await _patients.update(
+        existing.patientId,
+        patientId: patientId,
+        sex: sex,
+        age: age,
+        weightKg: weight,
+        heightCm: height,
+      );
+      return true;
+    } on DuplicatePatientIdException {
+      // Double appui sur Next : la fiche vient d'être créée par le premier.
+      return true;
+    } on PatientStorageException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Patient record not saved: ${e.message}')),
+        );
+      }
+      return true;
+    }
   }
 
   void _showPhotoOptions(BuildContext context) {
