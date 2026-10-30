@@ -39,3 +39,32 @@ ces largeurs en demi-axes :
 La circonférence estimée est `2π × √((r₁² + r₂²) / 2)`. Ainsi, les valeurs
 affichées comme largeur et profondeur restent les dimensions complètes mesurées ;
 seuls `r₁` et `r₂` sont les demi-axes utilisés dans cette formule.
+
+### Segmentation de la silhouette (A-04)
+
+Les bords de la silhouette sur la ligne de mesure sont trouvés en priorité
+avec le **masque de segmentation** de MediaPipe Pose (`enable_segmentation=True`,
+modèle déjà embarqué, aucune dépendance ajoutée). La largeur retenue est celle
+du segment « personne » qui contient le milieu des hanches : les bras écartés,
+les motifs des vêtements, les ombres et le décor ne coupent plus la mesure.
+
+**Canny reste en repli** si le masque est absent, quasi vide, couvre presque
+toute l'image, ou si le segment obtenu touche le bord de l'image ou a une
+largeur aberrante. Si aucune méthode n'aboutit, la mesure renvoie `None`
+(au lieu d'une largeur égale à toute l'image comme en V2).
+
+L'API renvoie la méthode utilisée pour chaque vue :
+
+```json
+"segmentation": {
+  "face":   {"methode": "masque", "raison_repli": null},
+  "profil": {"methode": "canny",  "raison_repli": "masque absent"}
+}
+```
+
+Le code est dans `segmentation.py` (fonctions pures). Tests :
+`python -m pytest measure -q` depuis la racine du dépôt.
+
+Limite connue : si les bras touchent le tronc au niveau de la ligne de mesure,
+le masque les inclut. Le protocole de pose (F-10) et le contrôle qualité (F-14)
+doivent l'éviter.

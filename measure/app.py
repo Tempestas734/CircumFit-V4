@@ -3,6 +3,10 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import math
+try:  # import en tant que paquet (gunicorn measure.app:app) ou en script
+    from .segmentation import details_segment, mesurer_segment
+except ImportError:
+    from segmentation import details_segment, mesurer_segment
 import os
 
 # Initialisation de MediaPipe Pose
@@ -11,13 +15,15 @@ mp_pose = mp.solutions.pose
 # Initialiser l'application Flask
 app = Flask(__name__)
 
-def mesurer_profondeur_taille(image_path, user_height_cm):
+def mesurer_profondeur_taille(image_path, user_height_cm, details=None):
     """
     Calcule la profondeur (largeur latérale) de la taille d'une personne en vue latérale.
 
     Args:
         image_path: Chemin vers l'image de profile.
         user_height_cm: Hauteur réelle de la personne en centimètres.
+        details: dict optionnel complété avec la méthode de segmentation
+            utilisée ("masque" ou "canny") et la raison d'un repli.
 
     Returns:
         Largeur complète de la taille en centimètres (pas un demi-axe),
@@ -28,8 +34,11 @@ def mesurer_profondeur_taille(image_path, user_height_cm):
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     # Initialisation de MediaPipe Pose
-    with mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5) as pose:
+    with mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5,
+                      enable_segmentation=True) as pose:
         results = pose.process(image_rgb)
+        if results.pose_landmarks is None:
+            return None
 
         landmarks = results.pose_landmarks.landmark
         height, width, _ = image.shape
@@ -41,6 +50,7 @@ def mesurer_profondeur_taille(image_path, user_height_cm):
         right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
         nose = landmarks[mp_pose.PoseLandmark.NOSE]
         left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP]
+        right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP]
 
         # Calcul des coordonnées du sommet de la tête à partir de la distance nez-talons
         heel_y_px = int(((left_heel.y + right_heel.y) / 2) * height)
@@ -64,30 +74,33 @@ def mesurer_profondeur_taille(image_path, user_height_cm):
         distance_epaules_talons = abs(heel_y_px - shoulder_y_px)
         waist_y_px = int(shoulder_y_px + (distance_epaules_talons * 0.25))
 
-        # Calcul de la largeur de la taille en pixels
-        edges = cv2.Canny(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), 50, 150) # détection de contours
-        x_center = int(width/2)
-        x_left, x_right = x_center, x_center
-        # part du point central et incrémente de part et d'autres jusqu'à détecter un contour de la silouhette (ligne de la largeur de la taille )
-        while x_left > 0 and edges[waist_y_px, x_left] == 0:
-            x_left -= 1
-        while x_right < width and edges[waist_y_px, x_right] == 0:
-            x_right += 1
+        # Bords de la silhouette sur la ligne de mesure (A-04) : masque de
+        # segmentation MediaPipe en priorité, Canny en repli. Le balayage part
+        # du milieu des hanches (centre du tronc) et non du centre de l'image.
+        x_tronc = int(((left_hip.x + right_hip.x) / 2) * width)
+        segment = mesurer_segment(image, results.segmentation_mask, waist_y_px, x_tronc)
+        if details is not None:
+            details.update(details_segment(segment))
+        if segment is None:
+            print("Bords de la silhouette introuvables sur la ligne de mesure.")
+            return None
 
         # Conversion de la largeur de la taille en centimètres
-        waist_width_px = x_right - x_left
+        waist_width_px = segment.largeur_px
         waist_width_cm = waist_width_px * ratio_pixel_cm
 
         return waist_width_cm
     pass
 
-def mesurer_largeur_taille(image_path, user_height_cm):
+def mesurer_largeur_taille(image_path, user_height_cm, details=None):
     """
     Calcule la largeur de la taille en centimètres pour une vue frontale de la personne.
 
     Args:
         image_path: Chemin vers l'image frontale.
         user_height_cm: Hauteur réelle de la personne en centimètres.
+        details: dict optionnel complété avec la méthode de segmentation
+            utilisée ("masque" ou "canny") et la raison d'un repli.
 
     Returns:
         Largeur complète de la taille en centimètres (pas un demi-axe),
@@ -98,10 +111,12 @@ def mesurer_largeur_taille(image_path, user_height_cm):
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     # Initialisation de MediaPipe Pose
-    with mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5) as pose:
+    with mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5,
+                      enable_segmentation=True) as pose:
         results = pose.process(image_rgb)
+        if results.pose_landmarks is None:
+            return None
 
-        
         landmarks = results.pose_landmarks.landmark
         height, width, _ = image.shape
             
@@ -111,6 +126,8 @@ def mesurer_largeur_taille(image_path, user_height_cm):
         left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
         right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
         nose = landmarks[mp_pose.PoseLandmark.NOSE]
+        left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP]
+        right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP]
 
         # Calcul des coordonnées importantes
         shoulder_y_px = int(((left_shoulder.y + right_shoulder.y) / 2) * height)
@@ -133,17 +150,19 @@ def mesurer_largeur_taille(image_path, user_height_cm):
         distance_epaules_talons = abs(heel_y_px - shoulder_y_px)
         waist_y_px = int(shoulder_y_px + (distance_epaules_talons * 0.25))
 
-        # Calcul de la largeur de la taille en pixels
-        edges = cv2.Canny(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), 50, 150)
-        x_center = int(width / 2)
-        x_left, x_right = x_center, x_center
-        while x_left > 0 and edges[waist_y_px, x_left] == 0:
-            x_left -= 1
-        while x_right < width and edges[waist_y_px, x_right] == 0:
-            x_right += 1
+        # Bords de la silhouette sur la ligne de mesure (A-04) : masque de
+        # segmentation MediaPipe en priorité, Canny en repli. Le balayage part
+        # du milieu des hanches (centre du tronc) et non du centre de l'image.
+        x_tronc = int(((left_hip.x + right_hip.x) / 2) * width)
+        segment = mesurer_segment(image, results.segmentation_mask, waist_y_px, x_tronc)
+        if details is not None:
+            details.update(details_segment(segment))
+        if segment is None:
+            print("Bords de la silhouette introuvables sur la ligne de mesure.")
+            return None
 
         # Conversion de la largeur de la taille en centimètres
-        waist_width_px = x_right - x_left
+        waist_width_px = segment.largeur_px
         waist_width_cm = waist_width_px * ratio_pixel_cm
 
         return waist_width_cm
@@ -152,11 +171,12 @@ def mesurer_largeur_taille(image_path, user_height_cm):
 
 
 def calculer_bri(image_path_side, image_path_front, user_height_cm):
+    segmentation = {"profil": {}, "face": {}}
     profondeur_laterale_cm = mesurer_profondeur_taille(
-        image_path_side, user_height_cm
+        image_path_side, user_height_cm, segmentation["profil"]
     )
     largeur_frontale_cm = mesurer_largeur_taille(
-        image_path_front, user_height_cm
+        image_path_front, user_height_cm, segmentation["face"]
     )
 
     if profondeur_laterale_cm and largeur_frontale_cm:
@@ -169,7 +189,12 @@ def calculer_bri(image_path_side, image_path_front, user_height_cm):
 
         # Calcul du BRI
         BRI = 364.2 - 365.5 * ((1 - (waist_circumference / (math.pi * user_height_cm))**2))**0.5
-        return {"waist_circumference": waist_circumference, "BRI": BRI}
+        return {
+            "waist_circumference": waist_circumference,
+            "BRI": BRI,
+            # Méthode de détection des bords par vue (A-04), pour la traçabilité.
+            "segmentation": segmentation,
+        }
     else:
         return None
     
