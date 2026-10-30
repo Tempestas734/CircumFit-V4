@@ -2,6 +2,10 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import math
+try:  # import en tant que paquet (gunicorn measure.app:app) ou en script
+    from .segmentation import SEUIL_MASQUE, details_segment, mesurer_segment
+except ImportError:
+    from segmentation import SEUIL_MASQUE, details_segment, mesurer_segment
 
 # Initialisation de MediaPipe Pose
 mp_pose = mp.solutions.pose
@@ -22,13 +26,15 @@ def tracer_points(image, landmarks, width, height):
         cv2.drawMarker(image, (x, y), (0, 0, 255), markerType=cv2.MARKER_CROSS, thickness=2)
 
         
-def mesurer_profondeur_taille(image_path, user_height_cm, image_name="output"):
+def mesurer_profondeur_taille(image_path, user_height_cm, image_name="output", details=None):
     """
     Calcule la profondeur (largeur latérale) de la taille d'une personne en vue latérale.
 
     Args:
         image_path: Chemin vers l'image de profile.
         user_height_cm: Hauteur réelle de la personne en centimètres.
+        details: dict optionnel complété avec la méthode de segmentation
+            utilisée ("masque" ou "canny") et la raison d'un repli.
         image_name: Nom pour sauvegarder l'image annotée.
 
     Returns:
@@ -42,7 +48,8 @@ def mesurer_profondeur_taille(image_path, user_height_cm, image_name="output"):
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     # Initialisation de MediaPipe Pose
-    with mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5) as pose:
+    with mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5,
+                      enable_segmentation=True) as pose:
         results = pose.process(image_rgb)
 
         if results.pose_landmarks:
@@ -57,6 +64,7 @@ def mesurer_profondeur_taille(image_path, user_height_cm, image_name="output"):
             right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
             nose = landmarks[mp_pose.PoseLandmark.NOSE]
             left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP]
+            right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP]
 
             # Calcul des coordonnées du sommet de la tête à partir de la distance nez-talons
             heel_y_px = int(((left_heel.y + right_heel.y) / 2) * height)
@@ -80,25 +88,28 @@ def mesurer_profondeur_taille(image_path, user_height_cm, image_name="output"):
             distance_epaules_talons = abs(heel_y_px - shoulder_y_px)
             waist_y_px = int(shoulder_y_px + (distance_epaules_talons * 0.25))
 
-            # Calcul de la largeur de la taille en pixels
-            edges = cv2.Canny(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), 50, 150)
-            cv2.imwrite("edges_profil.png",edges)
-            # détection de contours
-            x_center = int(width/2)
-            x_left, x_right = x_center, x_center
-            # part du point central et incrémente de part et d'autres jusqu'à détecter un contour de la silouhette (ligne de la largeur de la taille )
-            while x_left > 0 and edges[waist_y_px, x_left] == 0:
-                x_left -= 1
-            while x_right < width and edges[waist_y_px, x_right] == 0:
-                x_right += 1
+            # Bords de la silhouette sur la ligne de mesure (A-04) : masque de
+            # segmentation MediaPipe en priorité, Canny en repli. Le balayage part
+            # du milieu des hanches (centre du tronc) et non du centre de l'image.
+            x_tronc = int(((left_hip.x + right_hip.x) / 2) * width)
+            segment = mesurer_segment(image, results.segmentation_mask, waist_y_px, x_tronc)
+            if results.segmentation_mask is not None:
+                cv2.imwrite(f"{image_name}_masque_profil.png",
+                            (results.segmentation_mask > SEUIL_MASQUE).astype(np.uint8) * 255)
+            if details is not None:
+                details.update(details_segment(segment))
+            if segment is None:
+                print("Bords de la silhouette introuvables sur la ligne de mesure.")
+                return None
+            x_left, x_right = segment.x_gauche, segment.x_droite
 
             # Conversion de la largeur de la taille en centimètres
-            waist_width_px = x_right - x_left
+            waist_width_px = segment.largeur_px
             waist_width_cm = waist_width_px * ratio_pixel_cm
 
             # Annoter et sauvegarde l'image avec les résultats
             cv2.line(image, (x_left, waist_y_px), (x_right, waist_y_px), (0, 255, 0), 3)
-            cv2.putText(image, f"{waist_width_cm:.2f} cm", (x_center, waist_y_px - 20),
+            cv2.putText(image, f"{waist_width_cm:.2f} cm", (x_left, waist_y_px - 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
             output_path = f"{image_name}_mesure_side.png"
             cv2.imwrite(output_path, image)
@@ -110,13 +121,15 @@ def mesurer_profondeur_taille(image_path, user_height_cm, image_name="output"):
             return None
 
 
-def mesurer_largeur_taille(image_path, user_height_cm, image_name="output"):
+def mesurer_largeur_taille(image_path, user_height_cm, image_name="output", details=None):
     """
     Calcule la largeur de la taille en centimètres pour une vue frontale de la personne.
 
     Args:
         image_path: Chemin vers l'image frontale.
         user_height_cm: Hauteur réelle de la personne en centimètres.
+        details: dict optionnel complété avec la méthode de segmentation
+            utilisée ("masque" ou "canny") et la raison d'un repli.
         image_name: Nom pour sauvegarder l'image annotée.
 
     Returns:
@@ -130,7 +143,8 @@ def mesurer_largeur_taille(image_path, user_height_cm, image_name="output"):
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     # Initialisation de MediaPipe Pose
-    with mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5) as pose:
+    with mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5,
+                      enable_segmentation=True) as pose:
         results = pose.process(image_rgb)
 
         if results.pose_landmarks:
@@ -144,6 +158,8 @@ def mesurer_largeur_taille(image_path, user_height_cm, image_name="output"):
             left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
             right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
             nose = landmarks[mp_pose.PoseLandmark.NOSE]
+            left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP]
+            right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP]
 
             # Calcul des coordonnées importantes
             shoulder_y_px = int(((left_shoulder.y + right_shoulder.y) / 2) * height)
@@ -166,23 +182,28 @@ def mesurer_largeur_taille(image_path, user_height_cm, image_name="output"):
             distance_epaules_talons = abs(heel_y_px - shoulder_y_px)
             waist_y_px = int(shoulder_y_px + (distance_epaules_talons * 0.25))
 
-            # Calcul de la largeur de la taille en pixels
-            edges = cv2.Canny(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), 50, 150)
-            cv2.imwrite("edges_profil.png",edges)
-            x_center = int(width / 2)
-            x_left, x_right = x_center, x_center
-            while x_left > 0 and edges[waist_y_px, x_left] == 0:
-                x_left -= 1
-            while x_right < width and edges[waist_y_px, x_right] == 0:
-                x_right += 1
+            # Bords de la silhouette sur la ligne de mesure (A-04) : masque de
+            # segmentation MediaPipe en priorité, Canny en repli. Le balayage part
+            # du milieu des hanches (centre du tronc) et non du centre de l'image.
+            x_tronc = int(((left_hip.x + right_hip.x) / 2) * width)
+            segment = mesurer_segment(image, results.segmentation_mask, waist_y_px, x_tronc)
+            if results.segmentation_mask is not None:
+                cv2.imwrite(f"{image_name}_masque_face.png",
+                            (results.segmentation_mask > SEUIL_MASQUE).astype(np.uint8) * 255)
+            if details is not None:
+                details.update(details_segment(segment))
+            if segment is None:
+                print("Bords de la silhouette introuvables sur la ligne de mesure.")
+                return None
+            x_left, x_right = segment.x_gauche, segment.x_droite
 
             # Conversion de la largeur de la taille en centimètres
-            waist_width_px = x_right - x_left
+            waist_width_px = segment.largeur_px
             waist_width_cm = waist_width_px * ratio_pixel_cm
 
             # Annoter l'image avec les résultats
             cv2.line(image, (x_left, waist_y_px), (x_right, waist_y_px), (0, 255, 0), 3)
-            cv2.putText(image, f"{waist_width_cm:.2f} cm", (x_center, waist_y_px - 20),
+            cv2.putText(image, f"{waist_width_cm:.2f} cm", (x_left, waist_y_px - 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
             output_path = f"{image_name}_mesure_frontale.png"
             cv2.imwrite(output_path, image)
@@ -192,9 +213,6 @@ def mesurer_largeur_taille(image_path, user_height_cm, image_name="output"):
         else:
             print("Aucun point de repère détecté.")
             return None
-
-
-import math
 
 
 def calculer_bri(
