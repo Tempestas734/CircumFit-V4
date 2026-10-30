@@ -6,6 +6,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:circumfit_v3/check_detail_page.dart';
 import 'package:circumfit_v3/history_page.dart';
 import 'package:circumfit_v3/utils/patient_repository.dart';
+import 'package:circumfit_v3/photo_tutorial_page.dart';
+import 'package:circumfit_v3/utils/consent.dart';
+import 'package:circumfit_v3/face_profile_photos_page.dart';
 
 /// Une fiche P001 déjà enregistrée, au format stocké par PatientRepository.
 Map<String, Object> seedP001() => {
@@ -95,8 +98,8 @@ void main() {
       await tapKey(tester, 'patient_add');
       await tapKey(tester, 'patient_save');
 
-      expect(find.text('Please enter a patient ID or pseudonym.'),
-          findsOneWidget);
+      expect(
+          find.text('Please enter a patient ID or pseudonym.'), findsOneWidget);
       expect(find.text('Please select a sex.'), findsOneWidget);
       expect(find.text('New patient record'), findsOneWidget);
       expect(await PatientRepository().loadAll(), isEmpty);
@@ -110,8 +113,7 @@ void main() {
           id: 'p001', height: '180', weight: '90', age: '50', sex: 'Male');
       await tapKey(tester, 'patient_save');
 
-      expect(find.text('Another record already uses this ID.'),
-          findsOneWidget);
+      expect(find.text('Another record already uses this ID.'), findsOneWidget);
       expect(await PatientRepository().loadAll(), hasLength(1));
     });
 
@@ -179,12 +181,12 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('crée la fiche puis affiche les consignes photo',
-        (tester) async {
+    testWidgets('crée la fiche puis demande le consentement', (tester) async {
       SharedPreferences.setMockInitialValues({});
       await fillCheckDetails(tester, weight: '72,5');
 
-      expect(find.text('Photo Instructions'), findsOneWidget);
+      expect(find.byKey(const Key('consent_patient_id')), findsOneWidget);
+      expect(find.text('Photo Instructions'), findsNothing);
       final saved = await PatientRepository().find('P001');
       expect(saved!.weightKg, 72.5);
       expect(saved.sex, 'Female');
@@ -195,7 +197,7 @@ void main() {
       await fillCheckDetails(tester, weight: '72.5');
 
       expect(find.text('Update patient record?'), findsNothing);
-      expect(find.text('Photo Instructions'), findsOneWidget);
+      expect(find.byKey(const Key('consent_patient_id')), findsOneWidget);
     });
 
     testWidgets('valeurs différentes : Cancel garde la fiche et le formulaire',
@@ -208,6 +210,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Photo Instructions'), findsNothing);
+      expect(find.byKey(const Key('consent_patient_id')), findsNothing);
       expect((await PatientRepository().find('P001'))!.weightKg, 72.5);
     });
 
@@ -219,8 +222,56 @@ void main() {
       await tester.tap(find.byKey(const Key('record_update_confirm')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Photo Instructions'), findsOneWidget);
+      expect(find.byKey(const Key('consent_patient_id')), findsOneWidget);
       expect((await PatientRepository().find('P001'))!.weightKg, 75.0);
     });
+
+    testWidgets('le consentement accepté ouvre le tutoriel de face',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await fillCheckDetails(tester, weight: '72,5');
+
+      expect(find.byKey(const Key('consent_patient_id')), findsOneWidget);
+      for (var i = 0; i < ConsentText.statements.length; i++) {
+        await tapKey(tester, 'consent_check_$i');
+      }
+      final acceptButton = find.byKey(const Key('consent_accept'));
+      await tester.ensureVisible(acceptButton);
+      await tester.pumpAndSettle();
+      expect(tester.widget<ElevatedButton>(acceptButton).onPressed, isNotNull);
+      await tester.tap(acceptButton);
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 200));
+      }
+
+      expect(find.byType(PhotoTutorialPage), findsOneWidget);
+      expect(find.text('Photo Instructions'), findsNothing);
+    });
+  });
+
+  testWidgets('le flux photo ouvre automatiquement le tutoriel de face',
+      (tester) async {
+    useTallScreen(tester);
+    final consent = ConsentRecord.give(
+      patientId: 'P001',
+      checks: List<bool>.filled(ConsentText.statements.length, true),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FaceProfilePhotosPage(
+          userHeight: 168,
+          patientId: 'P001',
+          sex: 'Female',
+          age: 45,
+          weightKg: 72.5,
+          consent: consent,
+        ),
+      ),
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    expect(find.byType(PhotoTutorialPage), findsOneWidget);
   });
 }

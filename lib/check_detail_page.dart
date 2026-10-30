@@ -204,8 +204,7 @@ class CheckDetailPageState extends State<CheckDetailPage> {
                       if (!_validateInputs()) return;
                       final proceed = await _savePatientRecord();
                       if (!proceed) return;
-                      if (!context.mounted) return;
-                      _showPhotoOptions(context);
+                      await _continueToConsent();
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.transparent,
@@ -422,147 +421,41 @@ class CheckDetailPageState extends State<CheckDetailPage> {
     }
   }
 
-  void _showPhotoOptions(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          backgroundColor: Colors.white,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment:
-                  CrossAxisAlignment.center, // Centre les éléments principaux
-              children: [
-                const Icon(Icons.info_outline, color: Colors.blue, size: 24),
-                const SizedBox(height: 10),
-                const Text(
-                  "Photo Instructions",
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                  textAlign: TextAlign.center, // Centrer le texte
-                ),
-                const SizedBox(height: 20),
-                const Divider(color: Colors.grey),
-                const SizedBox(height: 20),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment
-                      .start, // Alignement à gauche des instructions
-                  children: [
-                    _buildInstruction(1, "Ensure proper lighting."),
-                    const SizedBox(height: 10),
-                    _buildInstruction(2, "Use a contrasting background."),
-                    const SizedBox(height: 10),
-                    _buildInstruction(3, "Wear tight clothing or underwear."),
-                    const SizedBox(height: 10),
-                    _buildInstruction(4,
-                        "For the front photo: Stand straight with arms at 45° and feet shoulder-width apart."),
-                    const SizedBox(height: 10),
-                    _buildInstruction(5,
-                        "For the side photo: Stand straight with feet together and arms at 90°."),
-                  ],
-                ),
-                const SizedBox(height: 30),
-                ElevatedButton(
-                  onPressed: () async {
-                    Navigator.pop(context);
-                    // Valeurs déjà validées par _validateInputs ; parseDecimal
-                    // gère la virgule (« 72,5 ») contrairement à double.parse.
-                    final height = parseDecimal(heightController.text);
-                    final weight = parseDecimal(weightController.text);
-                    final age = parseInteger(ageController.text);
-                    if (height == null || weight == null || age == null) {
-                      return;
-                    }
-                    final patientId = patientIdController.text.trim();
-                    // F-03 : consentement horodaté obligatoire avant les photos.
-                    // this.context = contexte de la page (celui du dialogue
-                    // vient d'être fermé).
-                    final consent = await Navigator.push<ConsentRecord>(
-                      this.context,
-                      MaterialPageRoute(
-                        builder: (_) => ConsentPage(patientId: patientId),
-                      ),
-                    );
-                    if (!mounted) return;
-                    if (consent == null) {
-                      ScaffoldMessenger.of(this.context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                              'Aucune photo sans consentement du patient.'),
-                        ),
-                      );
-                      return;
-                    }
-                    Navigator.push(
-                      this.context,
-                      MaterialPageRoute(
-                        builder: (context) => FaceProfilePhotosPage(
-                          userHeight: height,
-                          patientId: patientId,
-                          sex: selectedGender!,
-                          age: age,
-                          weightKg: weight,
-                          consent: consent,
-                        ),
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey[300],
-                    shadowColor: Colors.transparent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                  ),
-                  child: const Text(
-                    "Proceed",
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
+  Future<void> _continueToConsent() async {
+    final height = parseDecimal(heightController.text);
+    final weight = parseDecimal(weightController.text);
+    final age = parseInteger(ageController.text);
+    if (height == null || weight == null || age == null) return;
 
-  Widget _buildInstruction(int number, String text) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          "$number. ",
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
+    final patientId = patientIdController.text.trim();
+    final consent = await Navigator.push<ConsentRecord>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ConsentPage(patientId: patientId),
+      ),
+    );
+    if (!mounted) return;
+    if (consent == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aucune photo sans consentement du patient.'),
         ),
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(
-              fontSize: 14,
-              color: Colors.black87,
-              height: 1.5,
-            ),
-            textAlign: TextAlign.justify, // Justification du texte
-          ),
+      );
+      return;
+    }
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FaceProfilePhotosPage(
+          userHeight: height,
+          patientId: patientId,
+          sex: selectedGender!,
+          age: age,
+          weightKg: weight,
+          consent: consent,
         ),
-      ],
+      ),
     );
   }
 }

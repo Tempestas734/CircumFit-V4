@@ -33,17 +33,27 @@ class FaceProfilePhotosPage extends StatefulWidget {
 }
 
 class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
-  final ImagePicker _picker = ImagePicker();
   XFile? _frontImage;
   XFile? _sideImage;
+  bool _isGuiding = false;
+  bool _isSending = false;
 
-  Future<void> sendImagesToApi(BuildContext context) async {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _captureImage(ImageType.front, showTutorial: true);
+    });
+  }
+
+  Future<void> sendImagesToApi() async {
+    if (_isSending) return;
     if (_frontImage == null || _sideImage == null) {
       _showErrorDialog(context, message: 'Please upload both images.');
       return;
     }
 
-    // Afficher un indicateur de chargement personnalisé
+    setState(() => _isSending = true);
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -87,6 +97,8 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
       },
     );
 
+    Map<String, dynamic>? result;
+    String? errorMessage;
     try {
       //final uri = Uri.parse('http://192.168.1.22:5000/calculate-bri'); //
       final uri = Uri.parse(
@@ -123,24 +135,37 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
 
       if (response.statusCode == 200) {
         final responseData = await response.stream.bytesToString();
-        final result = jsonDecode(responseData);
-
-        // Naviguer vers la page des résultats
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ResultsPage(
-              waistCircumference:
-                  result['waist_circumference'], // Valeur reçue de l'API
-              bri: result['BRI'], // Valeur reçue de l'API
-            ),
-          ),
-        );
+        final decoded = jsonDecode(responseData);
+        if (decoded is! Map<String, dynamic>) {
+          throw const FormatException('Invalid response from the API.');
+        }
+        result = decoded;
       } else {
-        _showErrorDialog(context, message: 'API Error: ${response.statusCode}');
+        errorMessage = 'API Error: ${response.statusCode}';
       }
     } catch (e) {
-      _showErrorDialog(context, message: 'Error: $e');
+      errorMessage = 'Error: $e';
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        setState(() => _isSending = false);
+      }
+    }
+
+    if (!mounted) return;
+    if (errorMessage != null) {
+      _showErrorDialog(context, message: errorMessage);
+    } else if (result != null) {
+      final apiResult = result;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ResultsPage(
+            waistCircumference: apiResult['waist_circumference'],
+            bri: apiResult['BRI'],
+          ),
+        ),
+      );
     }
   }
 
@@ -184,71 +209,104 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
         child: Padding(
           padding: const EdgeInsets.all(20.0),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildConsentBanner(),
               const SizedBox(height: 20),
-              _buildPhotoSection(
-                label: "Front Photo",
-                image: _frontImage,
-                onPickImage: () => _pickImage(ImageType.front),
-              ),
-              const SizedBox(height: 30),
-              _buildPhotoSection(
-                label: "Side Photo",
-                image: _sideImage,
-                onPickImage: () => _pickImage(ImageType.side),
-              ),
-              const SizedBox(height: 40),
-              Align(
-                alignment: Alignment.centerRight,
-                child: Container(
-                  height: 50,
-                  width: 150,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(15),
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color.fromARGB(255, 186, 186, 186),
-                        Color.fromARGB(136, 78, 78, 78)
-                      ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withAlpha((0.3 * 255).toInt()),
-                        spreadRadius: 2,
-                        blurRadius: 5,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: ElevatedButton(
-                    onPressed: () {
-                      if (_frontImage != null && _sideImage != null) {
-                        sendImagesToApi(context); // Appelle l'API
-                      } else {
-                        _showErrorDialog(context,
-                            message: 'Please upload both images.');
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                    ),
-                    child: const Text(
-                      "Submit",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
+              Text(
+                _sideImage != null
+                    ? 'Photo de profil'
+                    : _frontImage != null
+                        ? 'Photo de face'
+                        : 'Préparation de la photo de face',
+                key: const Key('photo_flow_stage'),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
+              const SizedBox(height: 16),
+              if (_sideImage != null) ...[
+                _buildPhotoPreview(_sideImage!),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        key: const Key('side_photo_retake'),
+                        onPressed: _isGuiding
+                            ? null
+                            : () => _captureImage(
+                                  ImageType.side,
+                                  showTutorial: false,
+                                ),
+                        child: const Text('Reprendre'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        key: const Key('side_photo_send'),
+                        onPressed: _isSending ? null : sendImagesToApi,
+                        child: const Text('Envoyer'),
+                      ),
+                    ),
+                  ],
+                ),
+              ] else if (_frontImage != null) ...[
+                _buildPhotoPreview(_frontImage!),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        key: const Key('front_photo_retake'),
+                        onPressed: _isGuiding
+                            ? null
+                            : () => _captureImage(
+                                  ImageType.front,
+                                  showTutorial: false,
+                                ),
+                        child: const Text('Reprendre'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        key: const Key('front_photo_next'),
+                        onPressed: _isGuiding
+                            ? null
+                            : () => _captureImage(ImageType.side,
+                                showTutorial: true),
+                        child: const Text('Suivant'),
+                      ),
+                    ),
+                  ],
+                ),
+              ] else ...[
+                Container(
+                  height: 300,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: const Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                ),
+                if (!_isGuiding) ...[
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    key: const Key('front_photo_start'),
+                    onPressed: () => _captureImage(
+                      ImageType.front,
+                      showTutorial: true,
+                    ),
+                    child: const Text('Commencer la photo de face'),
+                  ),
+                ],
+              ],
             ],
           ),
         ),
@@ -256,76 +314,34 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
     );
   }
 
-  Widget _buildPhotoSection({
-    required String label,
-    required XFile? image,
-    required VoidCallback onPickImage,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(height: 10),
-        GestureDetector(
-          onTap: onPickImage,
-          child: Container(
-            height: 250,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.grey.shade300),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withAlpha(51),
-                  spreadRadius: 4,
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: image != null
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: FutureBuilder(
-                      future: image.readAsBytes(),
-                      builder: (context, snapshot) {
-                        if (snapshot.hasError) {
-                          return const Center(
-                            child: Icon(Icons.broken_image, color: Colors.red),
-                          );
-                        }
-                        if (!snapshot.hasData) {
-                          return const Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        }
-                        return Image.memory(
-                          snapshot.data!,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                        );
-                      },
-                    ),
-                  )
-                : const Center(
-                    child: Text(
-                      "Tap to upload photo",
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-          ),
-        ),
-      ],
+  Widget _buildPhotoPreview(XFile image) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: FutureBuilder<Uint8List>(
+        future: image.readAsBytes(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const SizedBox(
+              height: 300,
+              child: Center(
+                child: Icon(Icons.broken_image, color: Colors.red),
+              ),
+            );
+          }
+          if (!snapshot.hasData) {
+            return const SizedBox(
+              height: 300,
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          return Image.memory(
+            snapshot.data!,
+            fit: BoxFit.contain,
+            width: double.infinity,
+            height: 420,
+          );
+        },
+      ),
     );
   }
 
@@ -355,156 +371,57 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
     );
   }
 
-  void _pickImage(ImageType type) async {
+  Future<void> _captureImage(
+    ImageType type, {
+    required bool showTutorial,
+  }) async {
     // F-03 : garde-fou, le consentement doit concerner ce patient.
     if (!widget.consent.coversPatient(widget.patientId)) {
       _showErrorDialog(context,
           message: 'Consentement manquant pour ce patient.');
       return;
     }
-    final pageContext = context;
-    showDialog(
-      context: pageContext,
-      builder: (BuildContext dialogContext) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          backgroundColor: Colors.white,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  "Choose an option",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Divider(color: Colors.grey, thickness: 1),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildOptionButton(
-                      icon: Icons.camera_alt,
-                      label: "Camera",
-                      onTap: () async {
-                        Navigator.pop(dialogContext);
-                        final understood = await showPhotoTutorial(
-                          pageContext,
-                          view: type == ImageType.front
-                              ? PoseView.face
-                              : PoseView.profil,
-                          heightCm: widget.userHeight,
-                        );
-                        if (!mounted || !pageContext.mounted || !understood) {
-                          return;
-                        }
-                        final imageBytes =
-                            await Navigator.of(pageContext).push<Uint8List>(
-                          MaterialPageRoute(
-                            builder: (_) => GuidedCameraPage(
-                              frameWidthRatio:
-                                  type == ImageType.front ? 0.66 : 0.55,
-                              frameHeightRatio:
-                                  type == ImageType.front ? 0.62 : 0.66,
-                              hintText: type == ImageType.front
-                                  ? "De face : tête, épaules, mains et pieds dans la silhouette"
-                                  : "De profil : épaules, ventre, mains et pieds visibles",
-                              isSideView: type == ImageType.side,
-                              showGrid: true,
-                            ),
-                          ),
-                        );
-                        if (!mounted ||
-                            !pageContext.mounted ||
-                            imageBytes == null) {
-                          return;
-                        }
-                        final image = XFile.fromData(
-                          imageBytes,
-                          name:
-                              "circumfit_${DateTime.now().microsecondsSinceEpoch}.jpg",
-                          mimeType: "image/jpeg",
-                        );
-                        setState(() {
-                          if (type == ImageType.front) {
-                            _frontImage = image;
-                          } else {
-                            _sideImage = image;
-                          }
-                        });
-                      },
-                    ),
-                    _buildOptionButton(
-                      icon: Icons.photo_library,
-                      label: "Gallery",
-                      onTap: () async {
-                        final XFile? image = await _picker.pickImage(
-                            source:
-                                ImageSource.gallery); // Utiliser gallery ici
-                        if (image != null) {
-                          setState(() {
-                            if (type == ImageType.front) {
-                              _frontImage = image;
-                            } else {
-                              _sideImage = image;
-                            }
-                          });
-                        }
-                        if (dialogContext.mounted) {
-                          Navigator.pop(dialogContext);
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+    if (_isGuiding) return;
+    setState(() => _isGuiding = true);
+    try {
+      if (showTutorial) {
+        final understood = await showPhotoTutorial(
+          context,
+          view: type == ImageType.front ? PoseView.face : PoseView.profil,
+          heightCm: widget.userHeight,
         );
-      },
-    );
-  }
+        if (!mounted || !understood) return;
+      }
 
-  Widget _buildOptionButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(
-              color: Colors.blue.withAlpha((0.1 * 255).toInt()),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              icon,
-              color: Colors.blue,
-              size: 30,
-            ),
+      final imageBytes = await Navigator.of(context).push<Uint8List>(
+        MaterialPageRoute(
+          builder: (_) => GuidedCameraPage(
+            frameWidthRatio: type == ImageType.front ? 0.66 : 0.55,
+            frameHeightRatio: type == ImageType.front ? 0.62 : 0.66,
+            hintText: type == ImageType.front
+                ? "De face : tête, épaules, mains et pieds dans la silhouette"
+                : "De profil : épaules, ventre, mains et pieds visibles",
+            isSideView: type == ImageType.side,
+            showGrid: true,
           ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-        ],
-      ),
-    );
+        ),
+      );
+      if (!mounted || imageBytes == null) return;
+      final image = XFile.fromData(
+        imageBytes,
+        name: "circumfit_${DateTime.now().microsecondsSinceEpoch}.jpg",
+        mimeType: "image/jpeg",
+      );
+      setState(() {
+        if (type == ImageType.front) {
+          _frontImage = image;
+        } else {
+          _sideImage = image;
+        }
+      });
+    } finally {
+      if (mounted) setState(() => _isGuiding = false);
+    }
   }
 
   void _showErrorDialog(BuildContext context, {required String message}) {
