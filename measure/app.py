@@ -1,9 +1,18 @@
-from flask import Flask, request, jsonify
+import logging
+import math
+import os
+import time
+import uuid
+
+# A-05 : plafond du nombre de pixels décodés par OpenCV (protection contre les
+# images « bombes » qui satureraient la mémoire). Doit être fixé AVANT import cv2.
+os.environ.setdefault("OPENCV_IO_MAX_IMAGE_PIXELS", str(40_000_000))
+
 import cv2
 import mediapipe as mp
 import numpy as np
-import math
-import os
+from flask import Flask, jsonify, request
+from werkzeug.exceptions import HTTPException
 
 # Initialisation de MediaPipe Pose
 mp_pose = mp.solutions.pose
@@ -11,25 +20,59 @@ mp_pose = mp.solutions.pose
 # Initialiser l'application Flask
 app = Flask(__name__)
 
-def mesurer_profondeur_taille(image_path, user_height_cm):
+# A-05 : taille maximale de la requête complète (2 photos + champs).
+# Au-delà, Flask renvoie 413 avant même de lire les fichiers.
+MAX_UPLOAD_MB = 20
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+
+# A-05 : signatures acceptées (JPEG, PNG) — vérifiées en plus du décodage.
+_IMAGE_SIGNATURES = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")
+
+# A-05 : journaux SANS données personnelles. On ne journalise jamais les champs
+# du formulaire (patient_id, sexe, âge, poids, taille), ni les images, ni les
+# résultats ; seulement un identifiant de requête aléatoire, le statut, la durée
+# et le type d'erreur éventuel.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+logger = logging.getLogger("circumfit.api")
+
+
+class InvalidImageError(ValueError):
+    """Fichier reçu absent, vide, ou qui n'est pas une image JPEG/PNG lisible."""
+
+
+def decoder_image(file_storage):
+    """Décode une image envoyée en multipart directement en mémoire.
+
+    Aucune écriture sur disque : les octets sont lus en RAM, décodés par
+    OpenCV, puis libérés par le ramasse-miettes à la fin de la requête.
+    """
+    data = file_storage.read()
+    if not data or not data.startswith(_IMAGE_SIGNATURES):
+        raise InvalidImageError()
+    image = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        raise InvalidImageError()
+    return image
+
+def mesurer_profondeur_taille(image, user_height_cm):
     """
     Calcule la profondeur (largeur latérale) de la taille d'une personne en vue latérale.
 
     Args:
-        image_path: Chemin vers l'image de profile.
+        image: Image de profil déjà décodée (tableau BGR OpenCV, en mémoire).
         user_height_cm: Hauteur réelle de la personne en centimètres.
 
     Returns:
         Largeur complète de la taille en centimètres (pas un demi-axe),
         ou None si les points clés ne sont pas détectés.
     """
-    # Charger l'image
-    image = cv2.imread(image_path)
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     # Initialisation de MediaPipe Pose
     with mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5) as pose:
         results = pose.process(image_rgb)
+        if results.pose_landmarks is None:
+            return None
 
         landmarks = results.pose_landmarks.landmark
         height, width, _ = image.shape
@@ -81,27 +124,26 @@ def mesurer_profondeur_taille(image_path, user_height_cm):
         return waist_width_cm
     pass
 
-def mesurer_largeur_taille(image_path, user_height_cm):
+def mesurer_largeur_taille(image, user_height_cm):
     """
     Calcule la largeur de la taille en centimètres pour une vue frontale de la personne.
 
     Args:
-        image_path: Chemin vers l'image frontale.
+        image: Image frontale déjà décodée (tableau BGR OpenCV, en mémoire).
         user_height_cm: Hauteur réelle de la personne en centimètres.
 
     Returns:
         Largeur complète de la taille en centimètres (pas un demi-axe),
         ou None si les points clés ne sont pas détectés.
     """
-    # Charger l'image
-    image = cv2.imread(image_path)
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     # Initialisation de MediaPipe Pose
     with mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5) as pose:
         results = pose.process(image_rgb)
+        if results.pose_landmarks is None:
+            return None
 
-        
         landmarks = results.pose_landmarks.landmark
         height, width, _ = image.shape
             
@@ -151,12 +193,12 @@ def mesurer_largeur_taille(image_path, user_height_cm):
     pass
 
 
-def calculer_bri(image_path_side, image_path_front, user_height_cm):
+def calculer_bri(image_side, image_front, user_height_cm):
     profondeur_laterale_cm = mesurer_profondeur_taille(
-        image_path_side, user_height_cm
+        image_side, user_height_cm
     )
     largeur_frontale_cm = mesurer_largeur_taille(
-        image_path_front, user_height_cm
+        image_front, user_height_cm
     )
 
     if profondeur_laterale_cm and largeur_frontale_cm:
@@ -174,8 +216,33 @@ def calculer_bri(image_path_side, image_path_front, user_height_cm):
         return None
     
     
+@app.route('/health', methods=['GET'])
+def health():
+    """Sonde de disponibilité (Render, ping de maintien en éveil). Ne charge
+    aucun modèle et ne touche à aucune donnée."""
+    return jsonify({"status": "ok"}), 200
+
+
+@app.errorhandler(413)
+def request_too_large(_error):
+    logger.info("request rejected: payload too large (413)")
+    return jsonify({
+        "error": f"Request too large (max {MAX_UPLOAD_MB} MB for both images)."
+    }), 413
+
+
 @app.route('/calculate-bri', methods=['POST'])
 def calculate_bri():
+    request_id = uuid.uuid4().hex[:12]
+    started = time.monotonic()
+
+    def done(payload, status):
+        logger.info(
+            "request_id=%s status=%s duration_ms=%d",
+            request_id, status, (time.monotonic() - started) * 1000,
+        )
+        return jsonify(payload), status
+
     try:
         required_fields = (
             'patient_id',
@@ -192,12 +259,15 @@ def calculate_bri():
             or 'image_side' not in request.files
             or 'image_front' not in request.files
         ):
-            return jsonify({
+            return done({
                 "error": "Missing required patient data or images.",
                 "missing_fields": missing_fields,
-            }), 400
+            }, 400)
 
         # Valider les données patient transmises par le formulaire.
+        # NB (minimisation) : patient_id, sexe, âge et poids sont validés mais
+        # ne sont pas utilisés par le calcul ; ils ne sont ni stockés ni
+        # journalisés.
         patient_id = request.form['patient_id'].strip()
         sex = request.form['sex'].strip().lower()
         try:
@@ -205,46 +275,59 @@ def calculate_bri():
             age = int(request.form['age'])
             weight_kg = float(request.form['weight_kg'])
         except ValueError:
-            return jsonify({
+            return done({
                 "error": "Height, age, and weight must be valid numbers."
-            }), 400
+            }, 400)
         if not patient_id:
-            return jsonify({"error": "Patient ID must not be empty."}), 400
+            return done({"error": "Patient ID must not be empty."}, 400)
         if sex not in {'male', 'female'}:
-            return jsonify({"error": "Sex must be male or female."}), 400
+            return done({"error": "Sex must be male or female."}, 400)
         if not math.isfinite(user_height_cm) or not 100 <= user_height_cm <= 230:
-            return jsonify({
+            return done({
                 "error": "Height must be between 100 and 230 cm."
-            }), 400
+            }, 400)
         if age <= 0:
-            return jsonify({"error": "Age must be a positive whole number."}), 400
+            return done({"error": "Age must be a positive whole number."}, 400)
         if not math.isfinite(weight_kg) or weight_kg <= 0:
-            return jsonify({"error": "Weight must be a positive number."}), 400
+            return done({"error": "Weight must be a positive number."}, 400)
 
-        image_side = request.files['image_side']
-        image_front = request.files['image_front']
-
-        # Sauvegarder temporairement les images
-        side_path = os.path.join("temp", "side.jpg")
-        front_path = os.path.join("temp", "front.jpg")
-        os.makedirs("temp", exist_ok=True)
-        image_side.save(side_path)
-        image_front.save(front_path)
+        # Décodage en mémoire : aucune image n'est jamais écrite sur disque,
+        # donc rien ne peut rester sur le serveur, même en cas d'erreur, et
+        # deux requêtes simultanées ne peuvent pas s'écraser.
+        try:
+            image_side = decoder_image(request.files['image_side'])
+            image_front = decoder_image(request.files['image_front'])
+        except InvalidImageError:
+            return done({
+                "error": "Images must be valid JPEG or PNG files."
+            }, 400)
 
         # Calculer le BRI
-        result = calculer_bri(side_path, front_path, user_height_cm)
-
-        # Supprimer les fichiers temporaires
-        os.remove(side_path)
-        os.remove(front_path)
+        result = calculer_bri(image_side, image_front, user_height_cm)
 
         if result:
-            return jsonify(result)
-        else:
-            return jsonify({"error": "Unable to calculate BRI. Ensure the images are correct."}), 400
+            return done(result, 200)
+        return done({
+            "error": "Unable to calculate BRI. Ensure the images are correct."
+        }, 400)
+    except HTTPException:
+        # Erreurs HTTP prévues (ex. 413 fichier trop gros) : gérées par les
+        # errorhandler de Flask, pas transformées en 500.
+        raise
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        # Détail technique uniquement dans les journaux (type + pile d'appels,
+        # sans les valeurs du formulaire) ; message générique côté client.
+        logger.error(
+            "request_id=%s unexpected %s", request_id, type(e).__name__,
+            exc_info=True,
+        )
+        return done({
+            "error": "Internal server error.",
+            "request_id": request_id,
+        }, 500)
+
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))  # Récupère le port assigné par Render
-    app.run(debug=True, host='0.0.0.0', port=port)
+    # Lancement local uniquement (en production, Render utilise gunicorn).
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=False, host='0.0.0.0', port=port)
