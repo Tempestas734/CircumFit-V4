@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'dart:typed_data';
 import 'results_page.dart';
 import 'photo_tutorial_page.dart';
 import 'package:http/http.dart' as http;
@@ -361,9 +362,10 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
           message: 'Consentement manquant pour ce patient.');
       return;
     }
+    final pageContext = context;
     showDialog(
-      context: context,
-      builder: (BuildContext context) {
+      context: pageContext,
+      builder: (BuildContext dialogContext) {
         return Dialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
@@ -392,19 +394,19 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
                       icon: Icons.camera_alt,
                       label: "Camera",
                       onTap: () async {
-                        Navigator.pop(context);
+                        Navigator.pop(dialogContext);
                         final understood = await showPhotoTutorial(
-                          context,
+                          pageContext,
                           view: type == ImageType.front
                               ? PoseView.face
                               : PoseView.profil,
                           heightCm: widget.userHeight,
                         );
-                        if (!mounted || !understood) {
+                        if (!mounted || !pageContext.mounted || !understood) {
                           return;
                         }
-                        final imagePath = await Navigator.of(context)
-                            .push<String>(
+                        final imageBytes =
+                            await Navigator.of(pageContext).push<Uint8List>(
                           MaterialPageRoute(
                             builder: (_) => GuidedCameraPage(
                               frameWidthRatio:
@@ -418,10 +420,17 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
                             ),
                           ),
                         );
-                        if (!mounted || imagePath == null) {
+                        if (!mounted ||
+                            !pageContext.mounted ||
+                            imageBytes == null) {
                           return;
                         }
-                        final image = XFile(imagePath);
+                        final image = XFile.fromData(
+                          imageBytes,
+                          name:
+                              "circumfit_${DateTime.now().microsecondsSinceEpoch}.jpg",
+                          mimeType: "image/jpeg",
+                        );
                         setState(() {
                           if (type == ImageType.front) {
                             _frontImage = image;
@@ -447,8 +456,8 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
                             }
                           });
                         }
-                        if (mounted) {
-                          Navigator.pop(context);
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext);
                         }
                       },
                     ),

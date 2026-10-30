@@ -1,17 +1,16 @@
-import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
-Future<File> cropImageToGuide({
-  required String imagePath,
+Future<Uint8List> cropImageToGuide({
+  required Uint8List imageBytes,
   required Size viewportSize,
   required Rect guideRect,
   required bool mirrorHorizontally,
 }) async {
-  final bytes = await File(imagePath).readAsBytes();
-  final decoded = img.decodeImage(bytes);
+  final decoded = img.decodeImage(imageBytes);
   if (decoded == null) {
     throw const FormatException("The captured image could not be decoded.");
   }
@@ -49,10 +48,5 @@ Future<File> cropImageToGuide({
     width: right - left,
     height: bottom - top,
   );
-  final output = File(
-    "${Directory.systemTemp.path}${Platform.pathSeparator}"
-    "circumfit_${DateTime.now().microsecondsSinceEpoch}.jpg",
-  );
-  await output.writeAsBytes(img.encodeJpg(cropped, quality: 95), flush: true);
-  return output;
+  return Uint8List.fromList(img.encodeJpg(cropped, quality: 95));
 }

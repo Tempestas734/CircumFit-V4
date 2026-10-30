@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sensors_plus/sensors_plus.dart';
@@ -53,7 +54,11 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _startLevelSensor();
+    if (kIsWeb) {
+      _isLevel = true;
+    } else {
+      _startLevelSensor();
+    }
     _initializeCamera();
   }
 
@@ -74,8 +79,7 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
         if (!mounted) return;
         setState(() {
           _tiltDegrees = tilt;
-          _isLevel =
-              gravity > 6 && tilt <= widget.levelToleranceDegrees;
+          _isLevel = gravity > 6 && tilt <= widget.levelToleranceDegrees;
         });
       },
       onError: (Object error) {
@@ -108,10 +112,13 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
           break;
         }
       }
+      if (selectedCamera == null && kIsWeb && cameras.isNotEmpty) {
+        selectedCamera = cameras.first;
+      }
       if (selectedCamera == null) {
         throw CameraException(
           "CameraUnavailable",
-          "No camera with the requested lens was found.",
+          "No camera is available.",
         );
       }
 
@@ -194,21 +201,18 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
         frameHeightRatio: widget.frameHeightRatio,
       );
       final cropped = await cropImageToGuide(
-        imagePath: captured.path,
+        imageBytes: await captured.readAsBytes(),
         viewportSize: viewportSize,
         guideRect: guideRect,
-        mirrorHorizontally:
-            widget.cameraDirection == CameraLensDirection.front,
+        mirrorHorizontally: widget.cameraDirection == CameraLensDirection.front,
       );
-      if (!mounted) {
-        await cropped.delete();
-        return;
-      }
-      Navigator.of(context).pop<String>(cropped.path);
+      if (!mounted) return;
+      Navigator.of(context).pop<Uint8List>(cropped);
     } on CameraException catch (error) {
       if (mounted) {
         setState(() {
-          _cameraError = "Could not take the photo: ${error.description ?? error.code}";
+          _cameraError =
+              "Could not take the photo: ${error.description ?? error.code}";
         });
       }
     } catch (error) {
@@ -245,7 +249,8 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
       backgroundColor: Colors.black,
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final viewportSize = Size(constraints.maxWidth, constraints.maxHeight);
+          final viewportSize =
+              Size(constraints.maxWidth, constraints.maxHeight);
           return Stack(
             fit: StackFit.expand,
             children: [
@@ -280,10 +285,16 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    LevelIndicator(
-                      isLevel: _isLevel,
-                      tiltDegrees: _tiltDegrees,
-                    ),
+                    if (kIsWeb)
+                      const Text(
+                        "Gardez la caméra droite manuellement",
+                        style: TextStyle(color: Colors.white),
+                      )
+                    else
+                      LevelIndicator(
+                        isLevel: _isLevel,
+                        tiltDegrees: _tiltDegrees,
+                      ),
                     const SizedBox(height: 16),
                     SizedBox(
                       width: 76,

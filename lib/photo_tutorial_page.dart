@@ -419,7 +419,7 @@ abstract class _Scene extends CustomPainter {
       arm(77, 72, 1);
       arm(123, 128, -1);
     } else {
-      final hang = stroke(body.withOpacity(1 - p), 9);
+      final hang = stroke(body.withValues(alpha: 1 - p), 9);
       c.drawLine(
         Offset(_lerp(77, 100, p), 64),
         Offset(_lerp(72, 98, p), 150),
@@ -435,7 +435,7 @@ abstract class _Scene extends CustomPainter {
           ..moveTo(100, 66)
           ..lineTo(112, 82)
           ..lineTo(94, 78),
-        stroke(accent.withOpacity(p), 9),
+        stroke(accent.withValues(alpha: p), 9),
       );
     }
   }
@@ -455,7 +455,7 @@ class _ClothesScene extends _Scene {
     c.drawCircle(const Offset(80, 30), 15, fill);
     c.drawRRect(
       RRect.fromLTRBR(30, 52, 130, 172, const Radius.circular(16)),
-      Paint()..color = body.withOpacity(0.45),
+      Paint()..color = body.withValues(alpha: 0.45),
     );
     dashRect(c, const Rect.fromLTRB(30, 52, 130, 172), stroke(bad, 3));
     c.drawCircle(const Offset(220, 30), 15, fill);
@@ -466,7 +466,7 @@ class _ClothesScene extends _Scene {
       c,
       const Offset(180, 115),
       const Offset(260, 115),
-      stroke(accent.withOpacity(0.35 + 0.65 * pulse), 2.5),
+      stroke(accent.withValues(alpha: 0.35 + 0.65 * pulse), 2.5),
     );
     label(c, "✗ Ample", const Offset(80, 205), bad);
     label(c, "✓ Ajusté", const Offset(220, 205), accent);
@@ -503,7 +503,7 @@ class _FeetScene extends _Scene {
       fill,
     );
     c.drawCircle(
-        const Offset(100, 70), 10, Paint()..color = body.withOpacity(0.7));
+        const Offset(100, 70), 10, Paint()..color = body.withValues(alpha: 0.7));
     c.drawPath(
       Path()
         ..moveTo(96, 81)
@@ -524,7 +524,7 @@ class _FeetScene extends _Scene {
       c,
       const Offset(84, 142),
       const Offset(116, 142),
-      stroke(accent.withOpacity(0.4 + 0.6 * pulse), 2.5),
+      stroke(accent.withValues(alpha: 0.4 + 0.6 * pulse), 2.5),
     );
     c.restore();
   }
@@ -567,7 +567,7 @@ class _PostureScene extends _Scene {
     for (final y in const [30.0, 62.0, 147.0, 262.0]) {
       c.drawCircle(Offset(100, y), 4.5, dot);
     }
-    final guide = stroke(accent.withOpacity(0.4 + 0.6 * pulse), 3);
+    final guide = stroke(accent.withValues(alpha: 0.4 + 0.6 * pulse), 3);
     c.drawLine(const Offset(122, 30), const Offset(150, 30), guide);
     c.drawLine(const Offset(150, 30), const Offset(143, 24), guide);
     c.drawLine(const Offset(150, 30), const Offset(143, 36), guide);
@@ -610,7 +610,7 @@ class _CameraScene extends _Scene {
         ..lineTo(x, cy - e)
         ..lineTo(x, cy + e)
         ..close(),
-      Paint()..color = accent.withOpacity(0.08 + 0.08 * pulse),
+      Paint()..color = accent.withValues(alpha: 0.08 + 0.08 * pulse),
     );
     c.drawLine(Offset(px, cy + 12), const Offset(px, floor), stroke(body, 3));
     c.drawRRect(
@@ -656,7 +656,7 @@ class _FrameScene extends _Scene {
     c.scale(0.85);
     figure(c, face: view == PoseView.face, p: 1);
     c.restore();
-    final br = stroke(accent.withOpacity(0.4 + 0.6 * pulse), 4);
+    final br = stroke(accent.withValues(alpha: 0.4 + 0.6 * pulse), 4);
     const l = 14.0;
     for (final o in const [
       Offset(62, 16),
