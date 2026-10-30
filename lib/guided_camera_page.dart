@@ -50,6 +50,8 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
   Timer? _levelSensorTimeout;
   bool _isLevel = false;
   bool _isCapturing = false;
+  bool _isSwitchingCamera = false;
+  bool _canSwitchCamera = false;
   bool _isInitializing = false;
   bool _isPoseInitializing = false;
   bool _poseStreamStarting = false;
@@ -74,6 +76,7 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
   List<Offset> _poseLandmarks = const [];
   bool _isActive = true;
   int _cameraGeneration = 0;
+  late CameraLensDirection _cameraDirection = widget.cameraDirection;
   DateTime _lastPoseFrame = DateTime.fromMillisecondsSinceEpoch(0);
 
   bool get _supportsLivePose =>
@@ -278,9 +281,18 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
 
       final cameras = await availableCameras();
       if (!mounted || generation != _cameraGeneration || !_isActive) return;
+      final hasFrontCamera = cameras.any(
+        (camera) => camera.lensDirection == CameraLensDirection.front,
+      );
+      final hasBackCamera = cameras.any(
+        (camera) => camera.lensDirection == CameraLensDirection.back,
+      );
+      setState(() {
+        _canSwitchCamera = hasFrontCamera && hasBackCamera;
+      });
       CameraDescription? selectedCamera;
       for (final camera in cameras) {
-        if (camera.lensDirection == widget.cameraDirection) {
+        if (camera.lensDirection == _cameraDirection) {
           selectedCamera = camera;
           break;
         }
@@ -364,6 +376,56 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
       if (mounted && generation == _cameraGeneration) {
         setState(() => _isInitializing = false);
       }
+    }
+  }
+
+  Future<void> _switchCamera() async {
+    final controller = _controller;
+    if (!_canSwitchCamera ||
+        _isSwitchingCamera ||
+        _isInitializing ||
+        controller == null ||
+        !controller.value.isInitialized) {
+      return;
+    }
+
+    setState(() {
+      _isSwitchingCamera = true;
+      _controller = null;
+      _poseDetectionReady = false;
+      _hasPoseReading = false;
+      _poseMessage = "Analyse de la pose en cours…";
+      _poseLandmarks = const [];
+    });
+
+    try {
+      if (controller.value.isStreamingImages) {
+        await controller.stopImageStream();
+      }
+      await controller.dispose();
+      if (!mounted) return;
+      setState(() {
+        _cameraDirection = _cameraDirection == CameraLensDirection.front
+            ? CameraLensDirection.back
+            : CameraLensDirection.front;
+        _cameraError = null;
+      });
+      await _initializeCamera();
+    } on CameraException catch (error) {
+      if (mounted) {
+        setState(() {
+          _cameraError =
+              "Impossible de changer de caméra : ${error.description ?? error.code}";
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _cameraError = "Impossible de changer de caméra : $error";
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isSwitchingCamera = false);
     }
   }
 
@@ -531,12 +593,40 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
                 ),
               ),
               SafeArea(
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: IconButton(
-                    onPressed: () => Navigator.of(context).maybePop(),
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    tooltip: "Close camera",
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.of(context).maybePop(),
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        tooltip: "Close camera",
+                      ),
+                      if (_canSwitchCamera)
+                        IconButton(
+                          key: const Key('switch_camera'),
+                          onPressed: _isSwitchingCamera || _isInitializing
+                              ? null
+                              : _switchCamera,
+                          icon: _isSwitchingCamera
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.flip_camera_android,
+                                  color: Colors.white,
+                                ),
+                          tooltip: _cameraDirection == CameraLensDirection.front
+                              ? "Switch to back camera"
+                              : "Switch to front camera",
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -598,6 +688,7 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
                         heroTag: "guided-camera-capture",
                         onPressed: controller != null &&
                                 controller.value.isInitialized &&
+                                !_isSwitchingCamera &&
                                 (!_tiltSensorAvailable || _isLevel) &&
                                 (!_supportsLivePose ||
                                     _poseDetectionFailed ||
