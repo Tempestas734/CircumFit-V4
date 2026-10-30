@@ -42,6 +42,7 @@ flutter:
     - assets/body_image.png
     - assets/logo_polytech.png
     - assets/logo_lba.png
+    - assets/posenet.tflite
 
 flutter_launcher_icons:
   android: false

@@ -13,6 +13,16 @@ Dossier measure : app.py et measure_final_.py :API et code Python permettant de 
 
 Dossier assets : illustrations et icônes utilisées dans l'application.
 
+Sur iOS et Android, l'écran caméra utilise `assets/posenet.tflite` pour repérer
+les épaules, les poignets et les chevilles en direct. La photo est activée
+lorsque ces repères sont visibles dans la silhouette. Le flux caméra web ne
+permettant pas cette analyse dans le plugin actuel, le navigateur conserve un
+cadrage manuel. Le réglage de luminosité est toujours affiché : il utilise
+l'exposition matérielle quand elle est disponible, et ajuste l'aperçu ainsi que
+la photo enregistrée sinon. Le niveau du téléphone affiche l'angle si un
+accéléromètre est accessible; à défaut, l'écran indique que l'alignement doit
+être vérifié manuellement.
+
 Autres dossiers importants
 
     - build/ : Dossier généré automatiquement contenant les fichiers nécessaires pour la compilation de l’application.

@@ -414,8 +414,9 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
                               frameHeightRatio:
                                   type == ImageType.front ? 0.62 : 0.66,
                               hintText: type == ImageType.front
-                                  ? "Alignez-vous de face dans le cadre"
-                                  : "Alignez-vous de profil dans le cadre",
+                                  ? "De face : tête, épaules, mains et pieds dans la silhouette"
+                                  : "De profil : épaules, ventre, mains et pieds visibles",
+                              isSideView: type == ImageType.side,
                               showGrid: true,
                             ),
                           ),

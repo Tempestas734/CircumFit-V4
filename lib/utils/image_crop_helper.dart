@@ -9,6 +9,7 @@ Future<Uint8List> cropImageToGuide({
   required Size viewportSize,
   required Rect guideRect,
   required bool mirrorHorizontally,
+  double exposure = 0,
 }) async {
   final decoded = img.decodeImage(imageBytes);
   if (decoded == null) {
@@ -41,12 +42,18 @@ Future<Uint8List> cropImageToGuide({
       .ceil()
       .clamp(top + 1, oriented.height);
 
-  final cropped = img.copyCrop(
+  var cropped = img.copyCrop(
     oriented,
     x: left,
     y: top,
     width: right - left,
     height: bottom - top,
   );
+  if (exposure != 0) {
+    cropped = img.adjustColor(
+      cropped,
+      brightness: math.pow(2, exposure),
+    );
+  }
   return Uint8List.fromList(img.encodeJpg(cropped, quality: 95));
 }
