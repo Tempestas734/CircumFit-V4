@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'guided_camera_page.dart';
 import 'utils/consent.dart';
+import 'utils/local_waist_measurement.dart';
 
 class FaceProfilePhotosPage extends StatefulWidget {
   final double userHeight;
@@ -35,6 +36,10 @@ class FaceProfilePhotosPage extends StatefulWidget {
 class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
   XFile? _frontImage;
   XFile? _sideImage;
+  double? _frontLocalWidthCm;
+  double? _sideLocalWidthCm;
+  String? _frontLocalError;
+  String? _sideLocalError;
   bool _isGuiding = false;
   bool _isSending = false;
 
@@ -157,12 +162,23 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
       _showErrorDialog(context, message: errorMessage);
     } else if (result != null) {
       final apiResult = result;
+      final localMeasurement = LocalWaistMeasurements.calculate(
+        frontWidthCm: _frontLocalWidthCm,
+        sideWidthCm: _sideLocalWidthCm,
+        heightCm: widget.userHeight,
+      );
       await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => ResultsPage(
-            waistCircumference: apiResult['waist_circumference'],
-            bri: apiResult['BRI'],
+            waistCircumference:
+                (apiResult['waist_circumference'] as num).toDouble(),
+            bri: (apiResult['BRI'] as num).toDouble(),
+            localMeasurement: localMeasurement,
+            localMeasurementError: _localMeasurementError ??
+                (localMeasurement == null
+                    ? 'The local circumference could not be calculated.'
+                    : null),
           ),
         ),
       );
@@ -393,7 +409,7 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
         if (!mounted || !understood) return;
       }
 
-      final imageBytes = await Navigator.of(context).push<Uint8List>(
+      final capture = await Navigator.of(context).push<GuidedCameraCapture>(
         MaterialPageRoute(
           builder: (_) => GuidedCameraPage(
             frameWidthRatio: type == ImageType.front ? 0.66 : 0.55,
@@ -403,25 +419,42 @@ class FaceProfilePhotosPageState extends State<FaceProfilePhotosPage> {
                 : "De profil : épaules, ventre, mains et pieds visibles",
             isSideView: type == ImageType.side,
             showGrid: true,
+            userHeightCm: widget.userHeight,
           ),
         ),
       );
-      if (!mounted || imageBytes == null) return;
+      if (!mounted || capture == null) return;
       final image = XFile.fromData(
-        imageBytes,
+        capture.imageBytes,
         name: "circumfit_${DateTime.now().microsecondsSinceEpoch}.jpg",
         mimeType: "image/jpeg",
       );
       setState(() {
         if (type == ImageType.front) {
           _frontImage = image;
+          _frontLocalWidthCm = capture.localWaistWidthCm;
+          _frontLocalError = capture.localMeasurementError;
         } else {
           _sideImage = image;
+          _sideLocalWidthCm = capture.localWaistWidthCm;
+          _sideLocalError = capture.localMeasurementError;
         }
       });
     } finally {
       if (mounted) setState(() => _isGuiding = false);
     }
+  }
+
+  String? get _localMeasurementError {
+    final missingViews = <String>[];
+    if (_frontLocalWidthCm == null) {
+      missingViews.add('Front view: ${_frontLocalError ?? 'unavailable'}');
+    }
+    if (_sideLocalWidthCm == null) {
+      missingViews.add('Profile view: ${_sideLocalError ?? 'unavailable'}');
+    }
+    if (missingViews.isEmpty) return null;
+    return missingViews.join('\n');
   }
 
   void _showErrorDialog(BuildContext context, {required String message}) {

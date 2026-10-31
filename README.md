@@ -23,6 +23,23 @@ la photo enregistrée sinon. Le niveau du téléphone affiche l'angle si un
 accéléromètre est accessible; à défaut, l'écran indique que l'alignement doit
 être vérifié manuellement.
 
+Le même modèle produit aussi un masque de personne basse résolution
+(`float_segments`, 17 × 23), calculé localement et affiché en surimpression
+verte dans le guide. À la capture, ML Kit segmente également chaque image
+localement avec un masque haute résolution ; les repères de pose en direct
+servent à choisir la ligne de taille et à convertir sa largeur en centimètres.
+Les largeurs face/profil sont combinées avec l'approximation de Ramanujan II
+pour calculer une circonférence et un BRI local. Le facteur de forme est fixé
+à 1.0 faute de mesures de référence : le résultat est expérimental et ne
+constitue pas une mesure clinique.
+
+Pendant cette phase de comparaison, les deux photos sont aussi envoyées à
+l'API, qui continue d'utiliser MediaPipe.
+L'écran de résultats affiche côte à côte les valeurs serveur et locales ; une
+erreur de mesure locale est indiquée sans remplacer le résultat local par la
+valeur serveur. La segmentation sur appareil nécessite iOS 15.5 ou supérieur
+sur iPhone (Android reste pris en charge à partir du minimum du projet).
+
 Autres dossiers importants
 
     - build/ : Dossier généré automatiquement contenant les fichiers nécessaires pour la compilation de l’application.

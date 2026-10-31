@@ -9,10 +9,24 @@ import 'package:flutter/services.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
 import 'utils/image_crop_helper.dart';
+import 'utils/local_image_segmenter.dart';
+import 'utils/local_waist_measurement.dart';
 import 'utils/pose_detector.dart';
 import 'utils/pose_feedback.dart';
 import 'widgets/guide_overlay.dart';
 import 'widgets/level_indicator.dart';
+
+class GuidedCameraCapture {
+  const GuidedCameraCapture({
+    required this.imageBytes,
+    required this.localWaistWidthCm,
+    required this.localMeasurementError,
+  });
+
+  final Uint8List imageBytes;
+  final double? localWaistWidthCm;
+  final String? localMeasurementError;
+}
 
 class GuidedCameraPage extends StatefulWidget {
   const GuidedCameraPage({
@@ -25,6 +39,7 @@ class GuidedCameraPage extends StatefulWidget {
     this.isSideView = false,
     this.showGrid = false,
     this.levelToleranceDegrees = 10,
+    this.userHeightCm,
   })  : assert(frameWidthRatio > 0 && frameWidthRatio <= 1),
         assert(frameHeightRatio > 0 && frameHeightRatio <= 1),
         assert(levelToleranceDegrees > 0 && levelToleranceDegrees < 90);
@@ -37,6 +52,7 @@ class GuidedCameraPage extends StatefulWidget {
   final bool isSideView;
   final bool showGrid;
   final double levelToleranceDegrees;
+  final double? userHeightCm;
 
   @override
   State<GuidedCameraPage> createState() => _GuidedCameraPageState();
@@ -74,6 +90,8 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
   String? _poseError;
   String? _poseMessage;
   List<Offset> _poseLandmarks = const [];
+  PoseSegmentation? _poseSegmentation;
+  LocalImageSegmenter? _localImageSegmenter;
   bool _isActive = true;
   int _cameraGeneration = 0;
   late CameraLensDirection _cameraDirection = widget.cameraDirection;
@@ -91,6 +109,7 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
     _isLevel = true;
     _startLevelSensor();
     if (_supportsLivePose) {
+      _localImageSegmenter = LocalImageSegmenter();
       _isPoseInitializing = true;
       unawaited(_initializePoseDetector());
     }
@@ -141,12 +160,14 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
         _poseError = null;
         _poseMessage = "Analyse de la pose en cours…";
         _poseLandmarks = const [];
+        _poseSegmentation = null;
       });
     } on CameraException catch (error) {
       if (!mounted) return;
       setState(() {
         _poseDetectionFailed = true;
         _poseDetectionReady = false;
+        _poseSegmentation = null;
         _poseError =
             "Analyse de pose indisponible : ${error.description ?? error.code}. Cadrez-vous manuellement.";
       });
@@ -182,6 +203,7 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
         _hasPoseReading = true;
         _isPoseInFrame = feedback.isReady;
         _poseMessage = feedback.message;
+        _poseSegmentation = pose.segmentation;
         _poseLandmarks = [
           for (var index = 0; index < pose.keypoints.length; index++)
             if (importantLandmarks.contains(index) &&
@@ -194,6 +216,7 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
       setState(() {
         _poseDetectionFailed = true;
         _poseDetectionReady = false;
+        _poseSegmentation = null;
         _poseError =
             "Détection automatique interrompue : $error. Cadrez-vous manuellement.";
       });
@@ -396,6 +419,7 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
       _hasPoseReading = false;
       _poseMessage = "Analyse de la pose en cours…";
       _poseLandmarks = const [];
+      _poseSegmentation = null;
     });
 
     try {
@@ -468,6 +492,7 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
       _isInitializing = false;
       _poseDetectionReady = false;
       _hasPoseReading = false;
+      _poseSegmentation = null;
       final controller = _controller;
       _controller = null;
       if (mounted) setState(() {});
@@ -514,12 +539,59 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
         imageBytes: await captured.readAsBytes(),
         viewportSize: viewportSize,
         guideRect: guideRect,
-        mirrorHorizontally: widget.cameraDirection == CameraLensDirection.front,
+        mirrorHorizontally: _cameraDirection == CameraLensDirection.front,
         exposure: _exposureControlAvailable ? 0 : _exposureOffset,
       );
       if (!mounted) return;
       captureCompleted = true;
-      Navigator.of(context).pop<Uint8List>(cropped);
+      double? localWaistWidthCm;
+      String? localMeasurementError;
+      final poseDetector = _poseDetector;
+      final segmenter = _localImageSegmenter;
+      final heightCm = widget.userHeightCm;
+      if (poseDetector == null || segmenter == null || heightCm == null) {
+        localMeasurementError =
+            'Local pose or segmentation data is unavailable on this device.';
+      } else {
+        try {
+          final pose = await poseDetector.estimateImage(cropped);
+          final segmentation = await segmenter.segment(cropped);
+          if (segmentation == null) {
+            throw StateError('The on-device model returned no person mask.');
+          }
+          localWaistWidthCm = LocalWaistMeasurements.estimateWaistWidthCm(
+            pose: pose,
+            segmentation: segmentation,
+            viewportSize: Size(
+              segmentation.imageWidth.toDouble(),
+              segmentation.imageHeight.toDouble(),
+            ),
+            guideRect: Rect.fromLTWH(
+              0,
+              0,
+              segmentation.imageWidth.toDouble(),
+              segmentation.imageHeight.toDouble(),
+            ),
+            heightCm: heightCm,
+            mirrorHorizontally: false,
+          );
+          if (localWaistWidthCm == null) {
+            throw StateError(
+              'The waist could not be located confidently in the person mask.',
+            );
+          }
+        } catch (error) {
+          localMeasurementError = error.toString();
+        }
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop<GuidedCameraCapture>(
+        GuidedCameraCapture(
+          imageBytes: cropped,
+          localWaistWidthCm: localWaistWidthCm,
+          localMeasurementError: localMeasurementError,
+        ),
+      );
     } on CameraException catch (error) {
       if (mounted) {
         setState(() {
@@ -550,9 +622,11 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
     _levelSensorTimeout?.cancel();
     final controller = _controller;
     final detector = _poseDetector;
+    final segmenter = _localImageSegmenter;
     _controller = null;
     if (controller != null) unawaited(controller.dispose());
     if (detector != null) unawaited(detector.close());
+    if (segmenter != null) unawaited(segmenter.close());
     unawaited(SystemChrome.setPreferredOrientations(
       const [
         DeviceOrientation.portraitUp,
@@ -590,6 +664,7 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
                   guideColor: widget.guideColor,
                   showGrid: widget.showGrid,
                   posePoints: _poseLandmarks,
+                  poseSegmentation: _poseSegmentation,
                 ),
               ),
               SafeArea(
@@ -742,10 +817,24 @@ class _GuidedCameraPageState extends State<GuidedCameraPage>
             : Colors.white;
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Text(
-        message,
-        textAlign: TextAlign.center,
-        style: TextStyle(color: color, fontWeight: FontWeight.w600),
+      child: Column(
+        children: [
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: color, fontWeight: FontWeight.w600),
+          ),
+          if (_supportsLivePose)
+            Text(
+              _poseSegmentation?.hasForeground == true
+                  ? "Silhouette détectée sur l’appareil"
+                  : _poseDetectionFailed || _poseSegmentation != null
+                      ? "Segmentation locale indisponible"
+                      : "Segmentation locale en cours…",
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+        ],
       ),
     );
   }

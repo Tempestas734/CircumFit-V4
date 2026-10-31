@@ -24,21 +24,25 @@ Le fichier measure_final.py est pour tester et améliorer l'algorithme de mesure
 
 Les fichiers requirements.txt et Procfile sont utilisés pour le déploiement en ligne de l'algorithme (cf rapport).
 
-### Largeurs mesurées et demi-axes de l'ellipse
+### Circonférence elliptique et facteur de forme
 
 Les fonctions de mesure renvoient des **largeurs complètes** en centimètres :
 `largeur_taille_cm` correspond à la largeur frontale et `profondeur_taille_cm`
 à la profondeur latérale. Ce ne sont pas des demi-axes.
 
-Pour estimer la circonférence avec l'approximation elliptique, le code convertit
-ces largeurs en demi-axes :
+Le calcul utilise les demi-axes `a = largeur_taille_cm / 2` et
+`b = profondeur_taille_cm / 2`, puis l'approximation de Ramanujan :
 
-- `r₁ = largeur_taille_cm / 2` : demi-axe frontal ;
-- `r₂ = profondeur_taille_cm / 2` : demi-axe latéral.
+`π × [3(a + b) − √((3a + b)(a + 3b))]`
 
-La circonférence estimée est `2π × √((r₁² + r₂²) / 2)`. Ainsi, les valeurs
-affichées comme largeur et profondeur restent les dimensions complètes mesurées ;
-seuls `r₁` et `r₂` sont les demi-axes utilisés dans cette formule.
+Le résultat est multiplié par un facteur de forme. Il vaut actuellement **1,0
+(non calibré)**, car aucun jeu de mesures de référence au mètre ruban n'est
+disponible dans le dépôt. La fonction `calibrate_waist_shape_factor` de
+`circumference.py` permet de l'ajuster par moindres carrés à partir de mesures
+frontales, latérales et de circonférences de référence ; la valeur retournée
+doit ensuite remplacer `DEFAULT_WAIST_SHAPE_FACTOR`. Tant que ce facteur n'a
+pas été calculé sur des données de référence, les résultats ne doivent pas être
+présentés comme calibrés.
 
 ### Segmentation de la silhouette (A-04)
 

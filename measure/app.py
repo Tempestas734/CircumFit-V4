@@ -16,8 +16,10 @@ from werkzeug.exceptions import HTTPException
 
 try:  # import en tant que paquet (gunicorn measure.app:app) ou en script
     from .segmentation import details_segment, mesurer_segment
+    from .circumference import estimate_waist_circumference
 except ImportError:
     from segmentation import details_segment, mesurer_segment
+    from circumference import estimate_waist_circumference
 
 # Initialisation de MediaPipe Pose
 mp_pose = mp.solutions.pose
@@ -220,11 +222,9 @@ def calculer_bri(image_side, image_front, user_height_cm):
     )
 
     if profondeur_laterale_cm and largeur_frontale_cm:
-        # r1 et r2 sont les demi-axes, calculés à partir des largeurs complètes.
-        r1 = largeur_frontale_cm / 2  # demi-axe frontal
-        r2 = profondeur_laterale_cm / 2  # demi-axe latéral
-        waist_circumference = 2 * math.pi * math.sqrt(
-            (r1**2 + r2**2) / 2
+        waist_circumference = estimate_waist_circumference(
+            largeur_frontale_cm,
+            profondeur_laterale_cm,
         )
 
         # Calcul du BRI

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/pose_types.dart';
+
 class GuideOverlay extends StatelessWidget {
   const GuideOverlay({
     super.key,
@@ -11,6 +13,7 @@ class GuideOverlay extends StatelessWidget {
     this.guideColor = Colors.blue,
     this.showGrid = false,
     this.posePoints = const [],
+    this.poseSegmentation,
   });
 
   final double frameWidthRatio;
@@ -21,6 +24,7 @@ class GuideOverlay extends StatelessWidget {
   final Color guideColor;
   final bool showGrid;
   final List<Offset> posePoints;
+  final PoseSegmentation? poseSegmentation;
 
   static Rect frameRectFor({
     required Size size,
@@ -54,6 +58,7 @@ class GuideOverlay extends StatelessWidget {
             isSideView: isSideView,
             showGrid: showGrid,
             posePoints: posePoints,
+            poseSegmentation: poseSegmentation,
           ),
           child: Align(
             alignment: Alignment.topCenter,
@@ -85,6 +90,7 @@ class _GuidePainter extends CustomPainter {
     required this.isSideView,
     required this.showGrid,
     required this.posePoints,
+    required this.poseSegmentation,
   });
 
   final Rect frame;
@@ -93,6 +99,7 @@ class _GuidePainter extends CustomPainter {
   final bool isSideView;
   final bool showGrid;
   final List<Offset> posePoints;
+  final PoseSegmentation? poseSegmentation;
 
   Offset _point(double x, double y) =>
       Offset(frame.left + frame.width * x, frame.top + frame.height * y);
@@ -104,6 +111,8 @@ class _GuidePainter extends CustomPainter {
       Offset.zero & size,
       Paint()..color = Colors.black.withValues(alpha: 0.22),
     );
+
+    _drawSegmentation(canvas, size);
 
     if (showGrid) {
       final gridPaint = Paint()
@@ -187,6 +196,28 @@ class _GuidePainter extends CustomPainter {
         detectedPaint,
       );
     }
+  }
+
+  void _drawSegmentation(Canvas canvas, Size size) {
+    final segmentation = poseSegmentation;
+    if (segmentation == null) return;
+
+    final paint = Paint()
+      ..color = Colors.lightGreenAccent.withValues(alpha: 0.3)
+      ..style = PaintingStyle.fill;
+    final cells = Path();
+    for (var y = 0; y < segmentation.height; y++) {
+      for (var x = 0; x < segmentation.width; x++) {
+        if (!segmentation.isForeground(x, y)) continue;
+        cells.addRect(Rect.fromLTWH(
+          x * size.width / segmentation.width,
+          y * size.height / segmentation.height,
+          size.width / segmentation.width,
+          size.height / segmentation.height,
+        ));
+      }
+    }
+    canvas.drawPath(cells, paint);
   }
 
   void _drawFrontPose(

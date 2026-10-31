@@ -12,6 +12,9 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 
 import 'pose_types.dart';
 
+const _segmentationWidth = 17;
+const _segmentationHeight = 23;
+
 class PoseDetector {
   PoseDetector._(this._isolate, this._workerPort);
 
@@ -58,8 +61,7 @@ class PoseDetector {
       throw StateError('Pose detector has already been closed.');
     }
 
-    final responsePort = ReceivePort();
-    _workerPort.send(<String, Object>{
+    return _estimate(<String, Object>{
       'width': cameraImage.width,
       'height': cameraImage.height,
       'format': cameraImage.format.group.name,
@@ -74,6 +76,23 @@ class PoseDetector {
             },
           )
           .toList(growable: false),
+    });
+  }
+
+  Future<PoseEstimate> estimateImage(Uint8List encodedImage) async {
+    if (_isClosed) {
+      throw StateError('Pose detector has already been closed.');
+    }
+
+    return _estimate(<String, Object>{
+      'imageBytes': TransferableTypedData.fromList([encodedImage]),
+    });
+  }
+
+  Future<PoseEstimate> _estimate(Map<String, Object> request) async {
+    final responsePort = ReceivePort();
+    _workerPort.send(<String, Object>{
+      ...request,
       'replyPort': responsePort.sendPort,
     });
 
@@ -83,6 +102,13 @@ class PoseDetector {
         final error = response is Map ? response['error'] : null;
         throw StateError('Pose detection failed: $error');
       }
+      final segmentation = response['segmentation'];
+      if (segmentation is! Map ||
+          segmentation['confidences'] is! List ||
+          segmentation['width'] is! int ||
+          segmentation['height'] is! int) {
+        throw StateError('Pose model returned an invalid segmentation mask.');
+      }
       final points = (response['keypoints'] as List).map((point) {
         final values = point as List;
         return PoseKeypoint(
@@ -91,13 +117,33 @@ class PoseDetector {
           confidence: (values[2] as num).toDouble(),
         );
       }).toList(growable: false);
+      final confidences = (segmentation['confidences'] as List)
+          .map((value) => (value as num).toDouble())
+          .toList(growable: false);
+      final width = segmentation['width'] as int;
+      final height = segmentation['height'] as int;
       if (points.length != _keypointCount) {
         throw StateError(
           'Pose model returned ${points.length} keypoints; '
           'expected $_keypointCount.',
         );
       }
-      return PoseEstimate(points);
+      if (width != _segmentationWidth ||
+          height != _segmentationHeight ||
+          confidences.length != width * height) {
+        throw StateError(
+          'Pose model returned an invalid segmentation mask '
+          '(${width}x$height, ${confidences.length} values).',
+        );
+      }
+      return PoseEstimate(
+        points,
+        segmentation: PoseSegmentation(
+          width: width,
+          height: height,
+          confidences: confidences,
+        ),
+      );
     } finally {
       responsePort.close();
     }
@@ -154,8 +200,14 @@ Future<void> _poseWorkerEntry(Map<String, Object> startup) async {
     try {
       final input = _prepareInput(request);
       interpreter.runForMultipleInputs([input], outputBuffers);
+      final segmentation = _decodeSegmentation(outputBuffers);
       replyPort.send(<String, Object>{
         'keypoints': _decodeKeypoints(outputBuffers),
+        'segmentation': <String, Object>{
+          'width': segmentation.width,
+          'height': segmentation.height,
+          'confidences': segmentation.confidences,
+        },
       });
     } catch (error) {
       replyPort.send(<String, Object>{'error': error.toString()});
@@ -169,7 +221,7 @@ void _validateModel(Interpreter interpreter) {
     [1, 23, 17, 17],
     [1, 23, 17, 34],
     [1, 23, 17, 64],
-    [1, 23, 17, 1],
+    [1, _segmentationHeight, _segmentationWidth, 1],
   ];
   final actualInputShape = interpreter.getInputTensor(0).shape;
   if (!_sameShape(actualInputShape, inputShape)) {
@@ -205,10 +257,20 @@ Map<int, Object> _allocateOutputs(Interpreter interpreter) {
 }
 
 Uint8List _prepareInput(Map request) {
-  final cameraImage = _convertCameraFrame(request);
-  final uprightImage = defaultTargetPlatform == TargetPlatform.android
-      ? img.copyRotate(cameraImage, angle: 90)
-      : cameraImage;
+  final encodedImage = request['imageBytes'];
+  final img.Image uprightImage;
+  if (encodedImage is TransferableTypedData) {
+    final decoded = img.decodeImage(encodedImage.materialize().asUint8List());
+    if (decoded == null) {
+      throw const FormatException('Captured image could not be decoded.');
+    }
+    uprightImage = img.bakeOrientation(decoded);
+  } else {
+    final cameraImage = _convertCameraFrame(request);
+    uprightImage = defaultTargetPlatform == TargetPlatform.android
+        ? img.copyRotate(cameraImage, angle: 90)
+        : cameraImage;
+  }
   final resized = img.copyResize(
     uprightImage,
     width: 257,
@@ -362,4 +424,18 @@ List<List<double>> _decodeKeypoints(Map<int, Object> outputs) {
   }
 
   return keypoints;
+}
+
+PoseSegmentation _decodeSegmentation(Map<int, Object> outputs) {
+  const valueCount = _segmentationWidth * _segmentationHeight;
+  final logits = ByteData.view((outputs[3] as Uint8List).buffer);
+
+  return PoseSegmentation.fromLogits(
+    width: _segmentationWidth,
+    height: _segmentationHeight,
+    logits: [
+      for (var index = 0; index < valueCount; index++)
+        logits.getFloat32(index * 4, Endian.little),
+    ],
+  );
 }

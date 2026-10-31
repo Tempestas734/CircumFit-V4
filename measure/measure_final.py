@@ -4,8 +4,10 @@ import numpy as np
 import math
 try:  # import en tant que paquet (gunicorn measure.app:app) ou en script
     from .segmentation import SEUIL_MASQUE, details_segment, mesurer_segment
+    from .circumference import estimate_waist_circumference
 except ImportError:
     from segmentation import SEUIL_MASQUE, details_segment, mesurer_segment
+    from circumference import estimate_waist_circumference
 
 # Initialisation de MediaPipe Pose
 mp_pose = mp.solutions.pose
@@ -296,13 +298,10 @@ def calculer_bri(
         print("Erreur : mesures invalides.")
         return None
 
-    # 5. Estimation de la circonférence par une ellipse
-    # r1 et r2 sont les demi-axes, calculés à partir des largeurs complètes.
-    r1 = largeur_frontale_cm / 2.0  # demi-axe frontal
-    r2 = profondeur_laterale_cm / 2.0  # demi-axe latéral
-
-    waist_circumference = 2.0 * math.pi * math.sqrt(
-        (r1**2 + r2**2) / 2.0
+    # 5. Estimation de la circonférence par Ramanujan.
+    waist_circumference = estimate_waist_circumference(
+        largeur_frontale_cm,
+        profondeur_laterale_cm,
     )
 
     # 6. Vérification du domaine mathématique
