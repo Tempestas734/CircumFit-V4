@@ -80,3 +80,39 @@ Le code est dans `segmentation.py` (fonctions pures). Tests :
 Limite connue : si les bras touchent le tronc au niveau de la ligne de mesure,
 le masque les inclut. Le protocole de pose (F-10) et le contrôle qualité (F-14)
 doivent l'éviter.
+
+### Mesure multi-lignes avec médiane (F-23)
+
+La largeur (vue de face) et la profondeur (vue de profil) ne sont plus lues sur
+une seule ligne : elles sont mesurées sur **9 lignes** régulièrement réparties
+dans une bande de **± 2 % de la hauteur du sujet** autour du niveau retenu, et
+la valeur gardée est la **médiane** des lignes valides. Un bord mal détecté sur
+quelques lignes (bras qui touche le tronc localement, ombre, pli de vêtement)
+n'influence donc plus le résultat.
+
+- Chaque ligne est mesurée comme en A-04 (masque, Canny en repli). Le masque
+  est préparé une seule fois pour toutes les lignes : pas de surcoût de calcul.
+- Si moins de la moitié des lignes sont valides, la mesure est refusée (`None`)
+  plutôt que calculée sur une ou deux lignes.
+- La bande est exprimée en fraction de la hauteur du sujet en pixels : le
+  résultat ne dépend pas de la résolution de la photo.
+- Paramètres (`N_LIGNES`, `DEMI_BANDE_FRACTION`, `FRACTION_LIGNES_VALIDES_MIN`
+  dans `segmentation.py`) choisis sans calibration, à revoir avec la campagne
+  de mesures (E-06).
+
+L'API renvoie en plus, pour chaque vue, le détail des lignes. `methode` vaut
+`mixte` si certaines lignes ont été mesurées par le masque et d'autres par Canny ;
+un `ecart_px` élevé signale des bords incohérents d'une ligne à l'autre.
+
+```json
+"face": {
+  "methode": "masque", "raison_repli": null,
+  "lignes": {"n_valides": 9, "n_total": 9, "ecart_px": 4,
+             "demi_bande_px": 60, "par_methode": {"masque": 9, "canny": 0}}
+}
+```
+
+Tests : `measure/test_multilignes.py` (masques synthétiques, sans photo).
+
+Limite : si les bras touchent le tronc sur toute la hauteur de la bande, la
+médiane ne peut pas les écarter ; le protocole de pose (F-10) reste nécessaire.
