@@ -1,6 +1,6 @@
 import requests
 
-url = "https://circumfit.onrender.com/calculate-bri"
+url = "https://circumfit-v4.onrender.com/calculate-bri"
 files = {
     'image_side': open(r'C:\Users\elias\Downloads\photo_side_germine.jpg', 'rb'),
     'image_front': open(r'C:\Users\elias\Downloads\photo_front_germine.jpg', 'rb')

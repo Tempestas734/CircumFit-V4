@@ -6,8 +6,8 @@ Pour calculer le BRI, `/calculate-bri` reçoit les photos ainsi que les champs
 l'âge et le poids sont transmis et validés, mais ne sont ni enregistrés ni
 utilisés dans la formule actuelle du BRI.
 
-L'API est déployée sur : https://circumfit.onrender.com
-endpoint (/calculate-bri) : https://circumfit.onrender.com/calculate-bri
+L'API est déployée sur : https://circumfit-v4.onrender.com
+endpoint (/calculate-bri) : https://circumfit-v4.onrender.com/calculate-bri
  
 Erreur 405 - Method Not Allowed :
 
