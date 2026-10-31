@@ -184,3 +184,18 @@ def test_cors_preflight_options(client):
     )
     assert r.status_code == 200
     assert "POST" in r.headers["Access-Control-Allow-Methods"]
+
+
+# --- calcul réel du BRI à travers l'API ------------------------------------
+
+def test_calcul_bri_complet_via_api(client, monkeypatch, no_new_files):
+    """Seules les mesures d'image sont simulées : le calcul du tour de taille
+    et la formule du BRI sont exécutés pour de vrai (régression : la route
+    Flask calculate_bri masquait la formule du même nom -> TypeError, 500)."""
+    monkeypatch.setattr(server, "mesurer_profondeur_taille", lambda img, h, d=None: 25.0)
+    monkeypatch.setattr(server, "mesurer_largeur_taille", lambda img, h, d=None: 30.0)
+    r = client.post("/calculate-bri", data=make_data(), content_type="multipart/form-data")
+    assert r.status_code == 200, r.get_json()
+    body = r.get_json()
+    assert 60 < body["waist_circumference"] < 120
+    assert 0 < body["BRI"] < 20
