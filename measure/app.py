@@ -239,6 +239,30 @@ def calculer_bri(image_side, image_front, user_height_cm):
         return None
     
     
+# A-05 : CORS, pour que la version web de l'appli (hébergée sur Netlify, donc
+# sur un autre domaine) puisse appeler l'API depuis le navigateur. Aucun
+# cookie ni identifiant n'est utilisé, l'autorisation ne donne donc accès à
+# rien de plus que ce qu'un client direct obtient déjà. Les origines peuvent
+# être restreintes avec la variable d'environnement ALLOWED_ORIGINS
+# (liste séparée par des virgules, ex. https://circumfit.netlify.app).
+_ALLOWED_ORIGINS = [
+    o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",") if o.strip()
+]
+
+
+@app.after_request
+def ajouter_cors(response):
+    origin = request.headers.get("Origin")
+    if "*" in _ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    elif origin in _ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
+
 @app.route('/health', methods=['GET'])
 def health():
     """Sonde de disponibilité (Render, ping de maintien en éveil). Ne charge
