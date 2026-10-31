@@ -165,3 +165,22 @@ def test_journaux_sans_donnees_personnelles(client, monkeypatch, caplog):
     texte = "\n".join(messages)
     for valeur in ("PSEUDO-ABC123", "175", "Female", "female", "60", "81.23", "3.45"):
         assert valeur not in texte, f"donnée personnelle '{valeur}' dans les journaux"
+
+
+# --- CORS (version web sur Netlify) ----------------------------------------
+
+def test_cors_autorise_la_version_web(client):
+    r = client.get("/health", headers={"Origin": "https://exemple.netlify.app"})
+    assert r.headers["Access-Control-Allow-Origin"] == "*"
+
+
+def test_cors_preflight_options(client):
+    r = client.options(
+        "/calculate-bri",
+        headers={
+            "Origin": "https://exemple.netlify.app",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert r.status_code == 200
+    assert "POST" in r.headers["Access-Control-Allow-Methods"]
