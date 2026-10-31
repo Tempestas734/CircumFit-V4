@@ -16,10 +16,10 @@ from werkzeug.exceptions import HTTPException
 
 try:  # import en tant que paquet (gunicorn measure.app:app) ou en script
     from .segmentation import details_segment, mesurer_segment
-    from .circumference import calculate_bri, estimate_waist_circumference
+    from .circumference import calculate_bri as formule_bri, estimate_waist_circumference
 except ImportError:
     from segmentation import details_segment, mesurer_segment
-    from circumference import calculate_bri, estimate_waist_circumference
+    from circumference import calculate_bri as formule_bri, estimate_waist_circumference
 
 # Initialisation de MediaPipe Pose
 mp_pose = mp.solutions.pose
@@ -228,7 +228,9 @@ def calculer_bri(image_side, image_front, user_height_cm):
         )
 
         # Formule originale de Thomas et al. : racine carrée, pas puissance 2,5.
-        BRI = calculate_bri(waist_circumference, user_height_cm)
+        # NB : la formule est importée sous le nom formule_bri, car la route
+        # Flask ci-dessous s'appelle déjà calculate_bri (sinon elle l'écrase).
+        BRI = formule_bri(waist_circumference, user_height_cm)
         return {
             "waist_circumference": waist_circumference,
             "BRI": BRI,
