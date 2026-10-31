@@ -1,4 +1,4 @@
-"""Segmentation de la silhouette pour la mesure du tour de taille (exigence A-04).
+"""Segmentation de la silhouette pour la mesure du tour de taille (A-04, F-23).
 
 Principe
 --------
@@ -16,6 +16,10 @@ Canny reste en **repli** si le masque est absent ou jugé inexploitable
 (contrôles ci-dessous). La méthode utilisée et la raison d'un éventuel repli
 sont toujours renvoyées, pour la traçabilité et la campagne de validation.
 
+F-23 : la largeur est mesurée sur plusieurs lignes autour du niveau retenu
+et la médiane des lignes valides est gardée (``mesurer_multilignes``), pour
+limiter l'effet d'un bord mal détecté sur une ligne.
+
 Toutes les fonctions de ce module sont pures (pas de lecture de fichier, pas
 d'appel au modèle) afin d'être testables sans MediaPipe (voir A-07).
 """
@@ -23,7 +27,7 @@ d'appel au modèle) afin d'être testables sans MediaPipe (voir A-07).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -45,6 +49,15 @@ SEUILS_CANNY = (50, 150)
 
 METHODE_MASQUE = "masque"
 METHODE_CANNY = "canny"
+METHODE_MIXTE = "mixte"  # F-23 : lignes mesurées par le masque et par Canny
+
+# Mesure multi-lignes (F-23) : nombre de lignes et demi-hauteur de la bande,
+# en fraction de la hauteur du sujet en pixels (indépendant de la résolution).
+# Valeurs proposées sans calibration, à revoir avec la campagne E-06.
+N_LIGNES = 9
+DEMI_BANDE_FRACTION = 0.02
+# Part minimale de lignes valides pour accepter la médiane.
+FRACTION_LIGNES_VALIDES_MIN = 0.5
 
 Segment = Tuple[int, int]
 
@@ -200,6 +213,58 @@ def controler_segment(segment: Optional[Segment], largeur_image: int) -> Optiona
     return None
 
 
+def preparer_masque(image_bgr: np.ndarray, masque_proba: Optional[np.ndarray],
+                    ancrage: Tuple[int, int],
+                    seuil: float = SEUIL_MASQUE) -> Tuple[Optional[np.ndarray], Optional[str]]:
+    """Binarise, contrôle et nettoie le masque une seule fois pour toute l'image.
+
+    Returns:
+        (masque nettoyé, None) si le masque est exploitable,
+        (None, raison) sinon.
+    """
+    hauteur, largeur = image_bgr.shape[:2]
+    if masque_proba is None:
+        return None, "masque absent"
+    if np.asarray(masque_proba).shape[:2] != (hauteur, largeur):
+        return None, "masque de taille différente de l'image"
+    masque = binariser_masque(masque_proba, seuil)
+    raison = controler_masque(masque)
+    if raison is not None:
+        return None, raison
+    return nettoyer_masque(masque, ancrage), None
+
+
+class _BordsCanny:
+    """Calcule Canny sur toute l'image au premier besoin seulement."""
+
+    def __init__(self, image_bgr: np.ndarray):
+        self._image = image_bgr
+        self._gris = None
+
+    @property
+    def gris(self) -> np.ndarray:
+        if self._gris is None:
+            self._gris = cv2.cvtColor(self._image, cv2.COLOR_BGR2GRAY)
+        return self._gris
+
+
+def _mesurer_ligne(masque: Optional[np.ndarray], raison_masque: Optional[str],
+                   canny: _BordsCanny, y: int, x_ref: int,
+                   largeur: int) -> Optional[ResultatSegment]:
+    """Bords sur une ligne avec un masque déjà préparé : masque puis Canny."""
+    raison = raison_masque
+    if masque is not None:
+        segment = segment_masque(masque, y, x_ref)
+        raison = controler_segment(segment, largeur)
+        if raison is None:
+            return ResultatSegment(segment[0], segment[1], METHODE_MASQUE)
+
+    segment = segment_canny(canny.gris, y, x_ref)
+    if controler_segment(segment, largeur) is None:
+        return ResultatSegment(segment[0], segment[1], METHODE_CANNY, raison)
+    return None
+
+
 def mesurer_segment(image_bgr: np.ndarray, masque_proba: Optional[np.ndarray],
                     y: int, x_ref: int,
                     seuil: float = SEUIL_MASQUE) -> Optional[ResultatSegment]:
@@ -216,28 +281,142 @@ def mesurer_segment(image_bgr: np.ndarray, masque_proba: Optional[np.ndarray],
     Returns:
         ResultatSegment, ou None si aucune des deux méthodes n'aboutit.
     """
-    hauteur, largeur = image_bgr.shape[:2]
-    raison = None
+    largeur = image_bgr.shape[1]
+    masque, raison = preparer_masque(image_bgr, masque_proba, (x_ref, y), seuil)
+    return _mesurer_ligne(masque, raison, _BordsCanny(image_bgr), y, x_ref, largeur)
 
-    if masque_proba is None:
-        raison = "masque absent"
-    elif np.asarray(masque_proba).shape[:2] != (hauteur, largeur):
-        raison = "masque de taille différente de l'image"
-    else:
-        masque = binariser_masque(masque_proba, seuil)
-        raison = controler_masque(masque)
-        if raison is None:
-            masque = nettoyer_masque(masque, (x_ref, y))
-            segment = segment_masque(masque, y, x_ref)
-            raison = controler_segment(segment, largeur)
-            if raison is None:
-                return ResultatSegment(segment[0], segment[1], METHODE_MASQUE)
 
-    gris = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-    segment = segment_canny(gris, y, x_ref)
-    if controler_segment(segment, largeur) is None:
-        return ResultatSegment(segment[0], segment[1], METHODE_CANNY, raison)
-    return None
+# ---------------------------------------------------------------------------
+# Mesure multi-lignes (F-23)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ResultatMultiLignes:
+    """Médiane des largeurs mesurées sur plusieurs lignes autour du niveau retenu."""
+
+    largeur_px: float                 # médiane des largeurs valides
+    segment_median: ResultatSegment   # ligne valide la plus proche de la médiane
+    y_median: int                     # ordonnée de cette ligne (affichage)
+    n_valides: int
+    n_lignes: int
+    ecart_px: int                     # max − min des largeurs valides
+    demi_bande_px: int
+    methodes: Dict[str, int]          # nombre de lignes par méthode
+    raison_repli: Optional[str] = None
+
+    @property
+    def methode(self) -> str:
+        """« masque », « canny » ou « mixte » si les deux ont servi."""
+        utilisees = [m for m, n in self.methodes.items() if n]
+        return utilisees[0] if len(utilisees) == 1 else METHODE_MIXTE
+
+
+def demi_bande_px(hauteur_sujet_px: float,
+                  fraction: float = DEMI_BANDE_FRACTION) -> int:
+    """Demi-hauteur de la bande de mesure, en pixels (au moins 1)."""
+    return max(1, int(round(abs(hauteur_sujet_px) * fraction)))
+
+
+def ordonnees_lignes(y_centre: int, demi_bande: int,
+                     n_lignes: int = N_LIGNES) -> List[int]:
+    """Ordonnées de ``n_lignes`` lignes régulièrement espacées dans
+    [y_centre − demi_bande, y_centre + demi_bande], doublons supprimés.
+
+    La ligne centrale (niveau retenu) fait toujours partie de la liste
+    lorsque ``n_lignes`` est impair.
+    """
+    if n_lignes < 1:
+        raise ValueError("n_lignes doit être au moins 1.")
+    if n_lignes == 1 or demi_bande <= 0:
+        return [int(y_centre)]
+    ys = np.linspace(y_centre - demi_bande, y_centre + demi_bande, n_lignes)
+    return sorted({int(round(y)) for y in ys})
+
+
+def mesurer_multilignes(image_bgr: np.ndarray, masque_proba: Optional[np.ndarray],
+                        y_centre: int, x_ref: int, demi_bande: int,
+                        n_lignes: int = N_LIGNES,
+                        fraction_valides_min: float = FRACTION_LIGNES_VALIDES_MIN,
+                        seuil: float = SEUIL_MASQUE) -> Optional[ResultatMultiLignes]:
+    """Largeur médiane sur plusieurs lignes autour du niveau retenu (F-23).
+
+    Chaque ligne est mesurée comme en A-04 (masque, Canny en repli). Les lignes
+    sans résultat sont écartées ; la médiane des autres limite l'effet d'un
+    bord mal détecté sur quelques lignes (bras touchant le tronc localement,
+    ombre, pli de vêtement).
+
+    Args:
+        y_centre: niveau de mesure retenu, en pixels.
+        x_ref: abscisse du milieu des hanches, en pixels.
+        demi_bande: demi-hauteur de la bande, en pixels (voir ``demi_bande_px``).
+        fraction_valides_min: part minimale de lignes valides ; en dessous la
+            mesure est refusée plutôt que calculée sur une ou deux lignes.
+
+    Returns:
+        ResultatMultiLignes, ou None si trop peu de lignes sont valides.
+    """
+    largeur = image_bgr.shape[1]
+    masque, raison_masque = preparer_masque(image_bgr, masque_proba,
+                                            (x_ref, y_centre), seuil)
+    canny = _BordsCanny(image_bgr)
+    ys = ordonnees_lignes(y_centre, demi_bande, n_lignes)
+
+    mesures = []
+    for y in ys:
+        res = _mesurer_ligne(masque, raison_masque, canny, y, x_ref, largeur)
+        if res is not None:
+            mesures.append((y, res))
+
+    n_min = max(1, int(np.ceil(fraction_valides_min * len(ys))))
+    if len(mesures) < n_min:
+        return None
+
+    largeurs = np.array([r.largeur_px for _, r in mesures], dtype=float)
+    mediane = float(np.median(largeurs))
+    # Ligne la plus proche de la médiane ; à égalité, la plus proche du centre.
+    i = min(range(len(mesures)),
+            key=lambda k: (abs(largeurs[k] - mediane), abs(mesures[k][0] - y_centre)))
+    y_med, seg_med = mesures[i]
+
+    methodes = {METHODE_MASQUE: 0, METHODE_CANNY: 0}
+    for _, r in mesures:
+        methodes[r.methode] += 1
+    raisons = [r.raison_repli for _, r in mesures if r.raison_repli]
+    raison = raisons[0] if raisons else None
+
+    return ResultatMultiLignes(
+        largeur_px=mediane,
+        segment_median=seg_med,
+        y_median=y_med,
+        n_valides=len(mesures),
+        n_lignes=len(ys),
+        ecart_px=int(largeurs.max() - largeurs.min()),
+        demi_bande_px=int(demi_bande),
+        methodes=methodes,
+        raison_repli=raison,
+    )
+
+
+def details_multilignes(resultat: Optional[ResultatMultiLignes],
+                        n_lignes: Optional[int] = None) -> dict:
+    """Traçabilité F-23 : mêmes clés qu'en A-04, plus le détail des lignes."""
+    if resultat is None:
+        return {
+            "methode": None,
+            "raison_repli": "trop peu de lignes de mesure valides",
+            "lignes": {"n_valides": None, "n_total": n_lignes},
+        }
+    return {
+        "methode": resultat.methode,
+        "raison_repli": resultat.raison_repli,
+        "lignes": {
+            "n_valides": resultat.n_valides,
+            "n_total": resultat.n_lignes,
+            "ecart_px": resultat.ecart_px,
+            "demi_bande_px": resultat.demi_bande_px,
+            "par_methode": dict(resultat.methodes),
+        },
+    }
 
 
 def details_segment(resultat: Optional[ResultatSegment]) -> dict:
