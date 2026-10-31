@@ -30,10 +30,12 @@ Les fonctions de mesure renvoient des **largeurs complètes** en centimètres :
 `largeur_taille_cm` correspond à la largeur frontale et `profondeur_taille_cm`
 à la profondeur latérale. Ce ne sont pas des demi-axes.
 
-Le calcul utilise les demi-axes `a = largeur_taille_cm / 2` et
-`b = profondeur_taille_cm / 2`, puis l'approximation de Ramanujan :
+Le calcul distingue les largeurs complètes des demi-axes :
+`r1 = largeur_taille_cm / 2` et `r2 = profondeur_taille_cm / 2`, puis applique
+l'approximation de Ramanujan II :
 
-`π × [3(a + b) − √((3a + b)(a + 3b))]`
+`π × (r1 + r2) × [1 + 3h / (10 + √(4 − 3h))]`, où
+`h = ((r1 − r2) / (r1 + r2))²`.
 
 Le résultat est multiplié par un facteur de forme. Il vaut actuellement **1,0
 (non calibré)**, car aucun jeu de mesures de référence au mètre ruban n'est
@@ -43,6 +45,12 @@ frontales, latérales et de circonférences de référence ; la valeur retourné
 doit ensuite remplacer `DEFAULT_WAIST_SHAPE_FACTOR`. Tant que ce facteur n'a
 pas été calculé sur des données de référence, les résultats ne doivent pas être
 présentés comme calibrés.
+
+Le BRI suit l'équation de Thomas et al. :
+`364,2 − 365,5 × √(1 − [circonférence / (π × taille)]²)`.
+Le rapport est mis au carré puis passé sous une racine carrée ; il ne faut pas
+utiliser une puissance 2,5. Cette formule est partagée entre l'API, le script
+autonome et le calcul local dans l'application, avec des tests dédiés.
 
 ### Segmentation de la silhouette (A-04)
 

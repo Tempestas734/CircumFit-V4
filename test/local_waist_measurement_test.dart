@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:math' as math;
 
 import 'package:circumfit_v3/utils/local_waist_measurement.dart';
 import 'package:circumfit_v3/utils/pose_types.dart';
@@ -81,8 +82,27 @@ void main() {
     );
 
     expect(result, isNotNull);
-    expect(result!.circumferenceCm, closeTo(2 * 3.141592653589793 * 20, 0.001));
-    expect(result.bri, isNotNull);
+    final expectedCircumference = 2 * 3.141592653589793 * 20;
+    final ratio = expectedCircumference / (3.141592653589793 * 170);
+    expect(result!.circumferenceCm, closeTo(expectedCircumference, 0.001));
+    expect(
+      result.bri,
+      closeTo(364.2 - 365.5 * math.sqrt(1 - ratio * ratio), 0.001),
+    );
+  });
+
+  test('uses the Thomas square-root BRI formula', () {
+    const circumferenceCm = 85.0;
+    const heightCm = 170.0;
+    final ratio = circumferenceCm / (3.141592653589793 * heightCm);
+
+    expect(
+      LocalWaistMeasurements.calculateBri(
+        waistCircumferenceCm: circumferenceCm,
+        heightCm: heightCm,
+      ),
+      closeTo(364.2 - 365.5 * math.sqrt(1 - ratio * ratio), 0.001),
+    );
   });
 
   test('does not calculate circumference without both views', () {

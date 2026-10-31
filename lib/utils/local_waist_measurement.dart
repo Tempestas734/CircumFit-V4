@@ -143,21 +143,36 @@ class LocalWaistMeasurements {
       return null;
     }
 
-    final semiMajor = math.max(frontWidthCm, sideWidthCm) / 2;
-    final semiMinor = math.min(frontWidthCm, sideWidthCm) / 2;
-    final h =
-        math.pow(semiMajor - semiMinor, 2) / math.pow(semiMajor + semiMinor, 2);
-    final circumference = math.pi *
-        (semiMajor + semiMinor) *
-        (1 + (3 * h) / (10 + math.sqrt(4 - 3 * h)));
+    final r1Cm = frontWidthCm / 2;
+    final r2Cm = sideWidthCm / 2;
+    final h = math.pow((r1Cm - r2Cm) / (r1Cm + r2Cm), 2);
+    final circumference =
+        math.pi * (r1Cm + r2Cm) * (1 + (3 * h) / (10 + math.sqrt(4 - 3 * h)));
     if (!circumference.isFinite || circumference <= 0) return null;
 
-    final ratio = circumference / (math.pi * heightCm);
-    final bri = ratio >= 1 ? null : (1 - math.sqrt(1 - ratio * ratio)) * 1000;
+    final bri = calculateBri(
+      waistCircumferenceCm: circumference,
+      heightCm: heightCm,
+    );
     return LocalWaistMeasurement(
       circumferenceCm: circumference,
       bri: bri,
     );
+  }
+
+  static double? calculateBri({
+    required double waistCircumferenceCm,
+    required double heightCm,
+  }) {
+    if (!waistCircumferenceCm.isFinite ||
+        waistCircumferenceCm <= 0 ||
+        !heightCm.isFinite ||
+        heightCm <= 0) {
+      return null;
+    }
+    final ratio = waistCircumferenceCm / (math.pi * heightCm);
+    if (ratio >= 1) return null;
+    return 364.2 - 365.5 * math.sqrt(1 - ratio * ratio);
   }
 }
 

@@ -4,10 +4,10 @@ import numpy as np
 import math
 try:  # import en tant que paquet (gunicorn measure.app:app) ou en script
     from .segmentation import SEUIL_MASQUE, details_segment, mesurer_segment
-    from .circumference import estimate_waist_circumference
+    from .circumference import calculate_bri, estimate_waist_circumference
 except ImportError:
     from segmentation import SEUIL_MASQUE, details_segment, mesurer_segment
-    from circumference import estimate_waist_circumference
+    from circumference import calculate_bri, estimate_waist_circumference
 
 # Initialisation de MediaPipe Pose
 mp_pose = mp.solutions.pose
@@ -316,10 +316,8 @@ def calculer_bri(
         )
         return None
 
-    # 7. Calcul du BRI : formule originale
-    BRI = 364.2 - 365.5 * math.sqrt(
-        1.0 - ratio**2
-    )
+    # 7. Calcul du BRI : formule originale de Thomas et al.
+    BRI = calculate_bri(waist_circumference, user_height_cm)
 
     # 8. Résultats
     resultats = {

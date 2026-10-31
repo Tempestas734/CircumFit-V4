@@ -6,12 +6,14 @@ try:
     from measure.circumference import (
         DEFAULT_WAIST_SHAPE_FACTOR,
         calibrate_waist_shape_factor,
+        calculate_bri,
         estimate_waist_circumference,
     )
 except ImportError:
     from circumference import (
         DEFAULT_WAIST_SHAPE_FACTOR,
         calibrate_waist_shape_factor,
+        calculate_bri,
         estimate_waist_circumference,
     )
 
@@ -25,18 +27,37 @@ def test_ramanujan_circle_matches_exact_circumference():
 
 
 def test_ramanujan_ellipse_uses_full_widths_and_shape_factor():
-    a, b = 15.0, 10.0
-    expected = math.pi * (
-        3 * (a + b) - math.sqrt((3 * a + b) * (a + 3 * b))
+    width_cm, depth_cm = 30.0, 20.0
+    r1_cm, r2_cm = width_cm / 2, depth_cm / 2
+    h = ((r1_cm - r2_cm) / (r1_cm + r2_cm)) ** 2
+    expected = math.pi * (r1_cm + r2_cm) * (
+        1 + (3 * h) / (10 + math.sqrt(4 - 3 * h))
     )
 
-    result = estimate_waist_circumference(2 * a, 2 * b)
+    result = estimate_waist_circumference(width_cm, depth_cm)
 
     assert result == pytest.approx(expected)
     assert estimate_waist_circumference(
-        2 * a, 2 * b, shape_factor=1.08
+        width_cm, depth_cm, shape_factor=1.08
     ) == pytest.approx(expected * 1.08)
     assert DEFAULT_WAIST_SHAPE_FACTOR == 1.0
+
+
+def test_bri_uses_thomas_square_root_formula():
+    circumference_cm, height_cm = 85.0, 170.0
+    ratio = circumference_cm / (math.pi * height_cm)
+    expected = 364.2 - 365.5 * math.sqrt(1 - ratio**2)
+
+    assert calculate_bri(circumference_cm, height_cm) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    "circumference, height",
+    [(0, 170), (85, 0), (math.inf, 170), (85, math.nan), (600, 170)],
+)
+def test_bri_rejects_invalid_or_out_of_domain_inputs(circumference, height):
+    with pytest.raises(ValueError):
+        calculate_bri(circumference, height)
 
 
 @pytest.mark.parametrize(
