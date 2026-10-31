@@ -15,10 +15,10 @@ from flask import Flask, jsonify, request
 from werkzeug.exceptions import HTTPException
 
 try:  # import en tant que paquet (gunicorn measure.app:app) ou en script
-    from .segmentation import details_segment, mesurer_segment
+    from .segmentation import demi_bande_px, details_multilignes, mesurer_multilignes, N_LIGNES
     from .circumference import calculate_bri as formule_bri, estimate_waist_circumference
 except ImportError:
-    from segmentation import details_segment, mesurer_segment
+    from segmentation import demi_bande_px, details_multilignes, mesurer_multilignes, N_LIGNES
     from circumference import calculate_bri as formule_bri, estimate_waist_circumference
 
 # Initialisation de MediaPipe Pose
@@ -118,19 +118,20 @@ def mesurer_profondeur_taille(image, user_height_cm, details=None):
         distance_epaules_talons = abs(heel_y_px - shoulder_y_px)
         waist_y_px = int(shoulder_y_px + (distance_epaules_talons * 0.25))
 
-        # Bords de la silhouette sur la ligne de mesure (A-04) : masque de
-        # segmentation MediaPipe en priorité, Canny en repli. Le balayage part
-        # du milieu des hanches (centre du tronc) et non du centre de l'image.
+        # Bords de la silhouette (A-04) : masque de segmentation MediaPipe en
+        # priorité, Canny en repli, balayage depuis le milieu des hanches.
+        # F-23 : mesure sur plusieurs lignes autour du niveau retenu, médiane.
         x_tronc = int(((left_hip.x + right_hip.x) / 2) * width)
-        segment = mesurer_segment(image, results.segmentation_mask, waist_y_px, x_tronc)
+        mesure = mesurer_multilignes(image, results.segmentation_mask, waist_y_px,
+                                     x_tronc, demi_bande_px(person_height_px))
         if details is not None:
-            details.update(details_segment(segment))
-        if segment is None:
+            details.update(details_multilignes(mesure, N_LIGNES))
+        if mesure is None:
             print("Bords de la silhouette introuvables sur la ligne de mesure.")
             return None
 
         # Conversion de la largeur de la taille en centimètres
-        waist_width_px = segment.largeur_px
+        waist_width_px = mesure.largeur_px
         waist_width_cm = waist_width_px * ratio_pixel_cm
 
         return waist_width_cm
@@ -192,19 +193,20 @@ def mesurer_largeur_taille(image, user_height_cm, details=None):
         distance_epaules_talons = abs(heel_y_px - shoulder_y_px)
         waist_y_px = int(shoulder_y_px + (distance_epaules_talons * 0.25))
 
-        # Bords de la silhouette sur la ligne de mesure (A-04) : masque de
-        # segmentation MediaPipe en priorité, Canny en repli. Le balayage part
-        # du milieu des hanches (centre du tronc) et non du centre de l'image.
+        # Bords de la silhouette (A-04) : masque de segmentation MediaPipe en
+        # priorité, Canny en repli, balayage depuis le milieu des hanches.
+        # F-23 : mesure sur plusieurs lignes autour du niveau retenu, médiane.
         x_tronc = int(((left_hip.x + right_hip.x) / 2) * width)
-        segment = mesurer_segment(image, results.segmentation_mask, waist_y_px, x_tronc)
+        mesure = mesurer_multilignes(image, results.segmentation_mask, waist_y_px,
+                                     x_tronc, demi_bande_px(person_height_px))
         if details is not None:
-            details.update(details_segment(segment))
-        if segment is None:
+            details.update(details_multilignes(mesure, N_LIGNES))
+        if mesure is None:
             print("Bords de la silhouette introuvables sur la ligne de mesure.")
             return None
 
         # Conversion de la largeur de la taille en centimètres
-        waist_width_px = segment.largeur_px
+        waist_width_px = mesure.largeur_px
         waist_width_cm = waist_width_px * ratio_pixel_cm
 
         return waist_width_cm
