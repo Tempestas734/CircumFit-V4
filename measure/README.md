@@ -30,15 +30,14 @@ Les fonctions de mesure renvoient des **largeurs complètes** en centimètres :
 `largeur_taille_cm` correspond à la largeur frontale et `profondeur_taille_cm`
 à la profondeur latérale. Ce ne sont pas des demi-axes.
 
-Les mesures `largeur_taille_cm` et `profondeur_taille_cm` sont des largeurs
-complètes. Le code les distingue des demi-axes `r1 = largeur_taille_cm / 2`
-et `r2 = profondeur_taille_cm / 2`, puis applique l'approximation de
-Ramanujan II :
+Le calcul utilise les demi-axes `r₁ = largeur_taille_cm / 2` et
+`r₂ = profondeur_taille_cm / 2`, puis l'approximation de Ramanujan :
 
-`π × [3(r1 + r2) − √((3r1 + r2)(r1 + 3r2))]`
+`π × [3(r₁ + r₂) − √((3r₁ + r₂)(r₁ + 3r₂))]`
 
-Le BRI suit l'équation de Thomas et al. avec la racine carrée :
-`364,2 − 365,5 × √(1 − (circonférence / (π × taille))²)`.
+Le BRI suit l'équation de Thomas et al. :
+
+`BRI = 364,2 − 365,5 × √(1 − (circonférence / (π × taille))²)`
 
 Le résultat est multiplié par un facteur de forme. Il vaut actuellement **1,0
 (non calibré)**, car aucun jeu de mesures de référence au mètre ruban n'est
@@ -49,20 +48,23 @@ doit ensuite remplacer `DEFAULT_WAIST_SHAPE_FACTOR`. Tant que ce facteur n'a
 pas été calculé sur des données de référence, les résultats ne doivent pas être
 présentés comme calibrés.
 
-### Segmentation de la silhouette (A-04)
+### Segmentation et mesure multi-lignes (A-04, F-23)
 
-Les bords de la silhouette autour de la ligne de mesure sont trouvés en priorité
+Les bords de la silhouette sur la ligne de mesure sont trouvés en priorité
 avec le **masque de segmentation** de MediaPipe Pose (`enable_segmentation=True`,
 modèle déjà embarqué, aucune dépendance ajoutée). La largeur retenue est celle
 du segment « personne » qui contient le milieu des hanches : les bras écartés,
 les motifs des vêtements, les ombres et le décor ne coupent plus la mesure.
-Le serveur mesure neuf lignes sur une bande de 2 % de la hauteur estimée du
-sujet et retient la médiane des largeurs valides.
 
 **Canny reste en repli** si le masque est absent, quasi vide, couvre presque
 toute l'image, ou si le segment obtenu touche le bord de l'image ou a une
 largeur aberrante. Si aucune méthode n'aboutit, la mesure renvoie `None`
 (au lieu d'une largeur égale à toute l'image comme en V2).
+
+Pour chaque vue, la largeur est mesurée sur neuf lignes autour du niveau choisi
+(bande de ±2 % de la hauteur détectée) ; la médiane des lignes valides est
+utilisée. Les détails de méthode et l'écart de largeur sont renvoyés pour
+contrôle.
 
 L'API renvoie la méthode utilisée pour chaque vue :
 

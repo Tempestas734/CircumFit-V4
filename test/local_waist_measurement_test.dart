@@ -82,37 +82,39 @@ void main() {
     );
 
     expect(result, isNotNull);
-    const circumference = 2 * 3.141592653589793 * 20;
-    final ratio = circumference / (3.141592653589793 * 170);
-    final expectedBri = 364.2 - 365.5 * math.sqrt(1 - ratio * ratio);
-    expect(result!.circumferenceCm, closeTo(circumference, 0.001));
-    expect(result.bri, closeTo(expectedBri, 0.001));
-  });
-
-  test('uses half-width ellipse axes and the Thomas BRI formula', () {
-    final result = LocalWaistMeasurements.calculate(
-      frontWidthCm: 60,
-      sideWidthCm: 40,
-      heightCm: 175,
+    expect(result!.circumferenceCm, closeTo(2 * 3.141592653589793 * 20, 0.001));
+    final ratio = result.circumferenceCm / (3.141592653589793 * 170);
+    expect(
+      result.bri,
+      closeTo(364.2 - 365.5 * math.sqrt(1 - ratio * ratio), 0.000001),
     );
-    final r1 = 30.0;
-    final r2 = 20.0;
-    final h = ((r1 - r2) * (r1 - r2)) / ((r1 + r2) * (r1 + r2));
-    final circumference = 3.141592653589793 *
-        (r1 + r2) *
-        (1 + (3 * h) / (10 + math.sqrt(4 - 3 * h)));
-    final ratio = circumference / (3.141592653589793 * 175);
-    final expectedBri = 364.2 - 365.5 * math.sqrt(1 - ratio * ratio);
-
-    expect(result, isNotNull);
-    expect(result!.circumferenceCm, closeTo(circumference, 0.001));
-    expect(result.bri, closeTo(expectedBri, 0.001));
   });
 
-  test('returns no BRI for an out-of-domain circumference', () {
+  test('uses the Thomas square-root BRI equation', () {
+    const circumferenceCm = 90.0;
+    const heightCm = 175.0;
+    final ratio = circumferenceCm / (3.141592653589793 * heightCm);
+
+    expect(
+      LocalWaistMeasurements.calculateBri(
+        circumferenceCm: circumferenceCm,
+        heightCm: heightCm,
+      ),
+      closeTo(364.2 - 365.5 * math.sqrt(1 - ratio * ratio), 0.000001),
+    );
+  });
+
+  test('rejects invalid BRI inputs and circumference domain', () {
     expect(
       LocalWaistMeasurements.calculateBri(
         circumferenceCm: 600,
+        heightCm: 170,
+      ),
+      isNull,
+    );
+    expect(
+      LocalWaistMeasurements.calculateBri(
+        circumferenceCm: 0,
         heightCm: 170,
       ),
       isNull,

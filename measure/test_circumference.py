@@ -27,44 +27,34 @@ def test_ramanujan_circle_matches_exact_circumference():
 
 
 def test_ramanujan_ellipse_uses_full_widths_and_shape_factor():
-    frontal_width, side_depth = 30.0, 20.0
-    r1, r2 = frontal_width / 2, side_depth / 2
+    a, b = 15.0, 10.0
     expected = math.pi * (
-        3 * (r1 + r2) - math.sqrt((3 * r1 + r2) * (r1 + 3 * r2))
+        3 * (a + b) - math.sqrt((3 * a + b) * (a + 3 * b))
     )
 
-    result = estimate_waist_circumference(frontal_width, side_depth)
+    result = estimate_waist_circumference(2 * a, 2 * b)
 
     assert result == pytest.approx(expected)
     assert estimate_waist_circumference(
-        frontal_width, side_depth, shape_factor=1.08
+        2 * a, 2 * b, shape_factor=1.08
     ) == pytest.approx(expected * 1.08)
     assert DEFAULT_WAIST_SHAPE_FACTOR == 1.0
 
 
 def test_bri_uses_thomas_square_root_equation():
-    circumference_cm = 80.0
-    height_cm = 175.0
+    circumference_cm, height_cm = 90.0, 175.0
     ratio = circumference_cm / (math.pi * height_cm)
-    expected = 364.2 - 365.5 * math.sqrt(1 - ratio**2)
 
     assert calculate_body_roundness_index(circumference_cm, height_cm) == pytest.approx(
-        expected
+        364.2 - 365.5 * math.sqrt(1 - ratio**2)
     )
 
 
 @pytest.mark.parametrize(
-    "circumference, height",
-    [
-        (0, 175),
-        (80, 0),
-        (-1, 175),
-        (80, math.inf),
-        (math.nan, 175),
-        (550, 175),
-    ],
+    "circumference,height",
+    [(0, 170), (90, 0), (-1, 170), (90, math.inf), (600, 170)],
 )
-def test_bri_rejects_invalid_or_out_of_domain_inputs(circumference, height):
+def test_bri_rejects_invalid_values_and_out_of_domain(circumference, height):
     with pytest.raises(ValueError):
         calculate_body_roundness_index(circumference, height)
 

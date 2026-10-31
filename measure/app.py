@@ -256,7 +256,8 @@ def calculer_bri(image_side, image_front, user_height_cm):
 
         try:
             BRI = calculate_body_roundness_index(
-                waist_circumference, user_height_cm
+                waist_circumference,
+                user_height_cm,
             )
         except ValueError:
             return None

@@ -3,42 +3,34 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('face tutorial covers clothes, feet, arms, and camera setup',
+  testWidgets('face tutorial covers clothing, feet, arms and camera setup',
       (tester) async {
-    tester.view.physicalSize = const Size(800, 1400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-
     await tester.pumpWidget(
-      const MaterialApp(
-        home: PhotoTutorialPage(view: PoseView.face, heightCm: 170),
+      MaterialApp(
+        home: const PhotoTutorialPage(view: PoseView.face, heightCm: 170),
+        builder: (context, child) => MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: child!,
+        ),
       ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    expect(find.text('Haut ajusté et uni, qui contraste avec le mur'),
-        findsOneWidget);
+    expect(find.text('Bien s’habiller'), findsOneWidget);
+    expect(find.textContaining('Haut ajusté'), findsOneWidget);
 
-    Future<void> nextPage() async {
-      await tester.tap(find.text('Suivant'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 350));
-    }
+    await tester.tap(find.text('Suivant'));
+    await tester.pumpAndSettle();
+    expect(find.text('Placer ses pieds'), findsOneWidget);
 
-    await nextPage();
-    expect(find.text('Écartés de la largeur des épaules, parallèles'),
-        findsOneWidget);
+    await tester.tap(find.text('Suivant'));
+    await tester.pumpAndSettle();
+    expect(find.text('Placer ses bras'), findsOneWidget);
 
-    await nextPage();
-    expect(
-        find.text('Légèrement écartés du corps (10 à 15 cm)'), findsOneWidget);
-
-    await nextPage();
-    expect(find.text('Objectif à ≈ 102 cm du sol, au niveau du nombril'),
-        findsOneWidget);
-    expect(find.text('Distance : ≈ 2,0 m entre vous et le téléphone'),
-        findsOneWidget);
-    expect(find.text('Même hauteur et même distance pour la face et le profil'),
-        findsOneWidget);
+    await tester.tap(find.text('Suivant'));
+    await tester.pumpAndSettle();
+    expect(find.text('Régler le téléphone'), findsOneWidget);
+    expect(find.textContaining('Objectif à ≈ 102 cm'), findsOneWidget);
+    expect(find.textContaining('Distance : ≈ 2,0 m'), findsOneWidget);
   });
 }

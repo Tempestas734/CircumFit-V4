@@ -1,3 +1,5 @@
+"""Integration tests for the two view measurements and multi-line median."""
+
 from types import SimpleNamespace
 
 import numpy as np
@@ -9,9 +11,9 @@ except ImportError:
     import app as server
 
 
-class FakePose:
-    def __init__(self, results):
-        self._results = results
+class _FakePose:
+    def __init__(self, **_kwargs):
+        pass
 
     def __enter__(self):
         return self
@@ -20,62 +22,45 @@ class FakePose:
         return False
 
     def process(self, _image):
-        return self._results
+        height, width = 400, 300
+        landmarks = [
+            SimpleNamespace(x=0.5, y=0.5)
+            for _ in range(server.mp_pose.PoseLandmark.RIGHT_FOOT_INDEX + 1)
+        ]
+        points = {
+            "NOSE": (0.50, 0.20),
+            "LEFT_SHOULDER": (0.44, 0.35),
+            "RIGHT_SHOULDER": (0.56, 0.35),
+            "LEFT_HIP": (0.47, 0.60),
+            "RIGHT_HIP": (0.53, 0.60),
+            "LEFT_HEEL": (0.47, 0.90),
+            "RIGHT_HEEL": (0.53, 0.90),
+        }
+        for name, (x, y) in points.items():
+            landmarks[getattr(server.mp_pose.PoseLandmark, name)] = (
+                SimpleNamespace(x=x, y=y)
+            )
+        mask = np.zeros((height, width), dtype=np.float32)
+        mask[50:350, 100:200] = 0.95
+        return SimpleNamespace(
+            pose_landmarks=SimpleNamespace(landmark=landmarks),
+            segmentation_mask=mask,
+        )
 
 
 @pytest.mark.parametrize(
-    "measure_function",
-    [server.mesurer_profondeur_taille, server.mesurer_largeur_taille],
+    "measurement",
+    [server.mesurer_largeur_taille, server.mesurer_profondeur_taille],
 )
-def test_measurement_uses_median_width_over_multiple_lines(
-    monkeypatch, measure_function
-):
-    landmarks = [SimpleNamespace(x=0.5, y=0.5) for _ in range(33)]
-    landmark_values = {
-        server.mp_pose.PoseLandmark.NOSE: (0.5, 0.2),
-        server.mp_pose.PoseLandmark.LEFT_SHOULDER: (0.4, 0.35),
-        server.mp_pose.PoseLandmark.RIGHT_SHOULDER: (0.6, 0.35),
-        server.mp_pose.PoseLandmark.LEFT_HIP: (0.48, 0.6),
-        server.mp_pose.PoseLandmark.RIGHT_HIP: (0.52, 0.6),
-        server.mp_pose.PoseLandmark.LEFT_HEEL: (0.45, 0.9),
-        server.mp_pose.PoseLandmark.RIGHT_HEEL: (0.55, 0.9),
-    }
-    for landmark, (x, y) in landmark_values.items():
-        landmarks[int(landmark)] = SimpleNamespace(x=x, y=y)
-    segmentation_mask = np.full((128, 100), 0.8, dtype=np.float32)
-    results = SimpleNamespace(
-        pose_landmarks=SimpleNamespace(landmark=landmarks),
-        segmentation_mask=segmentation_mask,
-    )
-    monkeypatch.setattr(
-        server.mp_pose,
-        "Pose",
-        lambda **_kwargs: FakePose(results),
-    )
-    calls = []
-
-    def median_measure(image, mask, waist_y, hip_x, band):
-        calls.append((image, mask, waist_y, hip_x, band))
-        return SimpleNamespace(largeur_px=40.0)
-
-    monkeypatch.setattr(server, "mesurer_multilignes", median_measure)
-    monkeypatch.setattr(
-        server,
-        "details_multilignes",
-        lambda _result: {"methode": "masque", "lignes": {"n_valides": 9}},
-    )
+def test_view_measurement_uses_multi_line_median(monkeypatch, measurement):
+    monkeypatch.setattr(server.mp_pose, "Pose", _FakePose)
+    image = np.full((400, 300, 3), 200, dtype=np.uint8)
     details = {}
 
-    measured_width = measure_function(
-        np.zeros((128, 100, 3), dtype=np.uint8),
-        175,
-        details,
-    )
+    result = measurement(image, 170, details)
 
-    assert measured_width == pytest.approx(40 * 175 / 99)
-    assert len(calls) == 1
-    _, supplied_mask, _, hip_x, half_band = calls[0]
-    assert supplied_mask is segmentation_mask
-    assert hip_x == 50
-    assert half_band == 2
+    assert result is not None
+    assert result == pytest.approx(100 * 170 / 308)
     assert details["lignes"]["n_valides"] == 9
+    assert details["lignes"]["n_total"] == 9
+    assert details["methode"] == "masque"

@@ -346,7 +346,6 @@ def calculer_bri(
         )
         return None
 
-    # 7. Calcul du BRI : formule originale
     try:
         BRI = calculate_body_roundness_index(waist_circumference, user_height_cm)
     except ValueError:
