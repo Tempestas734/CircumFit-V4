@@ -1,5 +1,5 @@
-import 'dart:ui';
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:circumfit_v3/utils/local_waist_measurement.dart';
 import 'package:circumfit_v3/utils/pose_types.dart';
@@ -82,26 +82,40 @@ void main() {
     );
 
     expect(result, isNotNull);
-    final expectedCircumference = 2 * 3.141592653589793 * 20;
-    final ratio = expectedCircumference / (3.141592653589793 * 170);
-    expect(result!.circumferenceCm, closeTo(expectedCircumference, 0.001));
-    expect(
-      result.bri,
-      closeTo(364.2 - 365.5 * math.sqrt(1 - ratio * ratio), 0.001),
-    );
+    const circumference = 2 * 3.141592653589793 * 20;
+    final ratio = circumference / (3.141592653589793 * 170);
+    final expectedBri = 364.2 - 365.5 * math.sqrt(1 - ratio * ratio);
+    expect(result!.circumferenceCm, closeTo(circumference, 0.001));
+    expect(result.bri, closeTo(expectedBri, 0.001));
   });
 
-  test('uses the Thomas square-root BRI formula', () {
-    const circumferenceCm = 85.0;
-    const heightCm = 170.0;
-    final ratio = circumferenceCm / (3.141592653589793 * heightCm);
+  test('uses half-width ellipse axes and the Thomas BRI formula', () {
+    final result = LocalWaistMeasurements.calculate(
+      frontWidthCm: 60,
+      sideWidthCm: 40,
+      heightCm: 175,
+    );
+    final r1 = 30.0;
+    final r2 = 20.0;
+    final h = ((r1 - r2) * (r1 - r2)) / ((r1 + r2) * (r1 + r2));
+    final circumference = 3.141592653589793 *
+        (r1 + r2) *
+        (1 + (3 * h) / (10 + math.sqrt(4 - 3 * h)));
+    final ratio = circumference / (3.141592653589793 * 175);
+    final expectedBri = 364.2 - 365.5 * math.sqrt(1 - ratio * ratio);
 
+    expect(result, isNotNull);
+    expect(result!.circumferenceCm, closeTo(circumference, 0.001));
+    expect(result.bri, closeTo(expectedBri, 0.001));
+  });
+
+  test('returns no BRI for an out-of-domain circumference', () {
     expect(
       LocalWaistMeasurements.calculateBri(
-        waistCircumferenceCm: circumferenceCm,
-        heightCm: heightCm,
+        circumferenceCm: 600,
+        heightCm: 170,
       ),
-      closeTo(364.2 - 365.5 * math.sqrt(1 - ratio * ratio), 0.001),
+      isNull,
     );
   });
 

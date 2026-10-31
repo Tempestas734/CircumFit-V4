@@ -15,11 +15,17 @@ from flask import Flask, jsonify, request
 from werkzeug.exceptions import HTTPException
 
 try:  # import en tant que paquet (gunicorn measure.app:app) ou en script
-    from .segmentation import demi_bande_px, details_multilignes, mesurer_multilignes, N_LIGNES
-    from .circumference import calculate_bri as formule_bri, estimate_waist_circumference
+    from .segmentation import details_multilignes, demi_bande_px, mesurer_multilignes
+    from .circumference import (
+        calculate_body_roundness_index,
+        estimate_waist_circumference,
+    )
 except ImportError:
-    from segmentation import demi_bande_px, details_multilignes, mesurer_multilignes, N_LIGNES
-    from circumference import calculate_bri as formule_bri, estimate_waist_circumference
+    from segmentation import details_multilignes, demi_bande_px, mesurer_multilignes
+    from circumference import (
+        calculate_body_roundness_index,
+        estimate_waist_circumference,
+    )
 
 # Initialisation de MediaPipe Pose
 mp_pose = mp.solutions.pose
@@ -34,6 +40,15 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
 # A-05 : signatures acceptées (JPEG, PNG) — vérifiées en plus du décodage.
 _IMAGE_SIGNATURES = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")
+
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
 
 # A-05 : journaux SANS données personnelles. On ne journalise jamais les champs
 # du formulaire (patient_id, sexe, âge, poids, taille), ni les images, ni les
@@ -118,20 +133,25 @@ def mesurer_profondeur_taille(image, user_height_cm, details=None):
         distance_epaules_talons = abs(heel_y_px - shoulder_y_px)
         waist_y_px = int(shoulder_y_px + (distance_epaules_talons * 0.25))
 
-        # Bords de la silhouette (A-04) : masque de segmentation MediaPipe en
-        # priorité, Canny en repli, balayage depuis le milieu des hanches.
-        # F-23 : mesure sur plusieurs lignes autour du niveau retenu, médiane.
+        # Bords de la silhouette sur la ligne de mesure (A-04) : masque de
+        # segmentation MediaPipe en priorité, Canny en repli. Le balayage part
+        # du milieu des hanches (centre du tronc) et non du centre de l'image.
         x_tronc = int(((left_hip.x + right_hip.x) / 2) * width)
-        mesure = mesurer_multilignes(image, results.segmentation_mask, waist_y_px,
-                                     x_tronc, demi_bande_px(person_height_px))
+        segment = mesurer_multilignes(
+            image,
+            results.segmentation_mask,
+            waist_y_px,
+            x_tronc,
+            demi_bande_px(person_height_px),
+        )
         if details is not None:
-            details.update(details_multilignes(mesure, N_LIGNES))
-        if mesure is None:
-            print("Bords de la silhouette introuvables sur la ligne de mesure.")
+            details.update(details_multilignes(segment))
+        if segment is None:
+            print("Bords de la silhouette introuvables autour de la ligne de mesure.")
             return None
 
-        # Conversion de la largeur de la taille en centimètres
-        waist_width_px = mesure.largeur_px
+        # La mesure multi-lignes fournit la largeur médiane en pixels.
+        waist_width_px = segment.largeur_px
         waist_width_cm = waist_width_px * ratio_pixel_cm
 
         return waist_width_cm
@@ -193,20 +213,25 @@ def mesurer_largeur_taille(image, user_height_cm, details=None):
         distance_epaules_talons = abs(heel_y_px - shoulder_y_px)
         waist_y_px = int(shoulder_y_px + (distance_epaules_talons * 0.25))
 
-        # Bords de la silhouette (A-04) : masque de segmentation MediaPipe en
-        # priorité, Canny en repli, balayage depuis le milieu des hanches.
-        # F-23 : mesure sur plusieurs lignes autour du niveau retenu, médiane.
+        # Bords de la silhouette sur la ligne de mesure (A-04) : masque de
+        # segmentation MediaPipe en priorité, Canny en repli. Le balayage part
+        # du milieu des hanches (centre du tronc) et non du centre de l'image.
         x_tronc = int(((left_hip.x + right_hip.x) / 2) * width)
-        mesure = mesurer_multilignes(image, results.segmentation_mask, waist_y_px,
-                                     x_tronc, demi_bande_px(person_height_px))
+        segment = mesurer_multilignes(
+            image,
+            results.segmentation_mask,
+            waist_y_px,
+            x_tronc,
+            demi_bande_px(person_height_px),
+        )
         if details is not None:
-            details.update(details_multilignes(mesure, N_LIGNES))
-        if mesure is None:
-            print("Bords de la silhouette introuvables sur la ligne de mesure.")
+            details.update(details_multilignes(segment))
+        if segment is None:
+            print("Bords de la silhouette introuvables autour de la ligne de mesure.")
             return None
 
-        # Conversion de la largeur de la taille en centimètres
-        waist_width_px = mesure.largeur_px
+        # La mesure multi-lignes fournit la largeur médiane en pixels.
+        waist_width_px = segment.largeur_px
         waist_width_cm = waist_width_px * ratio_pixel_cm
 
         return waist_width_cm
@@ -229,10 +254,12 @@ def calculer_bri(image_side, image_front, user_height_cm):
             profondeur_laterale_cm,
         )
 
-        # Formule originale de Thomas et al. : racine carrée, pas puissance 2,5.
-        # NB : la formule est importée sous le nom formule_bri, car la route
-        # Flask ci-dessous s'appelle déjà calculate_bri (sinon elle l'écrase).
-        BRI = formule_bri(waist_circumference, user_height_cm)
+        try:
+            BRI = calculate_body_roundness_index(
+                waist_circumference, user_height_cm
+            )
+        except ValueError:
+            return None
         return {
             "waist_circumference": waist_circumference,
             "BRI": BRI,
@@ -243,30 +270,6 @@ def calculer_bri(image_side, image_front, user_height_cm):
         return None
     
     
-# A-05 : CORS, pour que la version web de l'appli (hébergée sur Netlify, donc
-# sur un autre domaine) puisse appeler l'API depuis le navigateur. Aucun
-# cookie ni identifiant n'est utilisé, l'autorisation ne donne donc accès à
-# rien de plus que ce qu'un client direct obtient déjà. Les origines peuvent
-# être restreintes avec la variable d'environnement ALLOWED_ORIGINS
-# (liste séparée par des virgules, ex. https://circumfit.netlify.app).
-_ALLOWED_ORIGINS = [
-    o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",") if o.strip()
-]
-
-
-@app.after_request
-def ajouter_cors(response):
-    origin = request.headers.get("Origin")
-    if "*" in _ALLOWED_ORIGINS:
-        response.headers["Access-Control-Allow-Origin"] = "*"
-    elif origin in _ALLOWED_ORIGINS:
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Vary"] = "Origin"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    return response
-
-
 @app.route('/health', methods=['GET'])
 def health():
     """Sonde de disponibilité (Render, ping de maintien en éveil). Ne charge

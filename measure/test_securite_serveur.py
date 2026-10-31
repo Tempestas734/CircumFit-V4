@@ -198,4 +198,8 @@ def test_calcul_bri_complet_via_api(client, monkeypatch, no_new_files):
     assert r.status_code == 200, r.get_json()
     body = r.get_json()
     assert 60 < body["waist_circumference"] < 120
-    assert 0 < body["BRI"] < 20
+    circumference = body["waist_circumference"]
+    expected_bri = 364.2 - 365.5 * (
+        1 - (circumference / (np.pi * 175)) ** 2
+    ) ** 0.5
+    assert body["BRI"] == pytest.approx(expected_bri)

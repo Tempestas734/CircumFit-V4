@@ -164,6 +164,27 @@ void main() {
   });
 
   group('CheckDetailPage (bouton Next)', () {
+    testWidgets('affiche les erreurs de champ en temps réel', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      useTallScreen(tester);
+      await tester.pumpWidget(const MaterialApp(home: CheckDetailPage()));
+
+      final heightField = find.byType(TextField).at(1);
+      await tester.enterText(heightField, '99');
+      await tester.pump();
+      expect(
+        find.text('Height must be between 100 and 230 cm.'),
+        findsOneWidget,
+      );
+
+      await tester.enterText(heightField, '170');
+      await tester.pump();
+      expect(
+        find.text('Height must be between 100 and 230 cm.'),
+        findsNothing,
+      );
+    });
+
     Future<void> fillCheckDetails(WidgetTester tester,
         {required String weight}) async {
       useTallScreen(tester);

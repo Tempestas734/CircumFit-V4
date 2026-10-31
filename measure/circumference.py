@@ -23,22 +23,25 @@ def estimate_waist_circumference(
 
     r1_cm = frontal_width_cm / 2.0
     r2_cm = side_depth_cm / 2.0
-    h = ((r1_cm - r2_cm) / (r1_cm + r2_cm)) ** 2
-    circumference = math.pi * (r1_cm + r2_cm) * (
-        1.0 + (3.0 * h) / (10.0 + math.sqrt(4.0 - 3.0 * h))
+    circumference = math.pi * (
+        3.0 * (r1_cm + r2_cm)
+        - math.sqrt((3.0 * r1_cm + r2_cm) * (r1_cm + 3.0 * r2_cm))
     )
     return circumference * shape_factor
 
 
-def calculate_bri(waist_circumference_cm: float, height_cm: float) -> float:
-    """Calculate BRI using Thomas et al.'s square-root formula."""
+def calculate_body_roundness_index(
+    waist_circumference_cm: float,
+    height_cm: float,
+) -> float:
+    """Calculate BRI using the square-root equation from Thomas et al."""
     values = (waist_circumference_cm, height_cm)
     if any(not math.isfinite(value) or value <= 0 for value in values):
         raise ValueError("Circumference and height must be positive and finite.")
 
     ratio = waist_circumference_cm / (math.pi * height_cm)
     if ratio >= 1.0:
-        raise ValueError("Circumference is outside the valid BRI domain.")
+        raise ValueError("Circumference must be less than pi times height.")
     return 364.2 - 365.5 * math.sqrt(1.0 - ratio**2)
 
 

@@ -145,13 +145,13 @@ class LocalWaistMeasurements {
 
     final r1Cm = frontWidthCm / 2;
     final r2Cm = sideWidthCm / 2;
-    final h = math.pow((r1Cm - r2Cm) / (r1Cm + r2Cm), 2);
+    final h = math.pow(r1Cm - r2Cm, 2) / math.pow(r1Cm + r2Cm, 2);
     final circumference =
         math.pi * (r1Cm + r2Cm) * (1 + (3 * h) / (10 + math.sqrt(4 - 3 * h)));
     if (!circumference.isFinite || circumference <= 0) return null;
 
     final bri = calculateBri(
-      waistCircumferenceCm: circumference,
+      circumferenceCm: circumference,
       heightCm: heightCm,
     );
     return LocalWaistMeasurement(
@@ -161,18 +161,19 @@ class LocalWaistMeasurements {
   }
 
   static double? calculateBri({
-    required double waistCircumferenceCm,
+    required double circumferenceCm,
     required double heightCm,
   }) {
-    if (!waistCircumferenceCm.isFinite ||
-        waistCircumferenceCm <= 0 ||
+    if (!circumferenceCm.isFinite ||
         !heightCm.isFinite ||
+        circumferenceCm <= 0 ||
         heightCm <= 0) {
       return null;
     }
-    final ratio = waistCircumferenceCm / (math.pi * heightCm);
-    if (ratio >= 1) return null;
-    return 364.2 - 365.5 * math.sqrt(1 - ratio * ratio);
+
+    final ratio = circumferenceCm / (math.pi * heightCm);
+    if (!ratio.isFinite || ratio >= 1) return null;
+    return 364.2 - 365.5 * math.sqrt(1 - math.pow(ratio, 2));
   }
 }
 

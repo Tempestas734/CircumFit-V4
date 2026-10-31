@@ -3,11 +3,27 @@ import mediapipe as mp
 import numpy as np
 import math
 try:  # import en tant que paquet (gunicorn measure.app:app) ou en script
-    from .segmentation import SEUIL_MASQUE, N_LIGNES, demi_bande_px, details_multilignes, mesurer_multilignes
-    from .circumference import calculate_bri, estimate_waist_circumference
+    from .segmentation import (
+        SEUIL_MASQUE,
+        details_multilignes,
+        demi_bande_px,
+        mesurer_multilignes,
+    )
+    from .circumference import (
+        calculate_body_roundness_index,
+        estimate_waist_circumference,
+    )
 except ImportError:
-    from segmentation import SEUIL_MASQUE, N_LIGNES, demi_bande_px, details_multilignes, mesurer_multilignes
-    from circumference import calculate_bri, estimate_waist_circumference
+    from segmentation import (
+        SEUIL_MASQUE,
+        details_multilignes,
+        demi_bande_px,
+        mesurer_multilignes,
+    )
+    from circumference import (
+        calculate_body_roundness_index,
+        estimate_waist_circumference,
+    )
 
 # Initialisation de MediaPipe Pose
 mp_pose = mp.solutions.pose
@@ -90,33 +106,32 @@ def mesurer_profondeur_taille(image_path, user_height_cm, image_name="output", d
             distance_epaules_talons = abs(heel_y_px - shoulder_y_px)
             waist_y_px = int(shoulder_y_px + (distance_epaules_talons * 0.25))
 
-            # Bords de la silhouette (A-04) : masque de segmentation MediaPipe en
-            # priorité, Canny en repli, balayage depuis le milieu des hanches.
-            # F-23 : mesure sur plusieurs lignes autour du niveau retenu, médiane.
+            # Bords de la silhouette sur la ligne de mesure (A-04) : masque de
+            # segmentation MediaPipe en priorité, Canny en repli. Le balayage part
+            # du milieu des hanches (centre du tronc) et non du centre de l'image.
             x_tronc = int(((left_hip.x + right_hip.x) / 2) * width)
-            demi_bande = demi_bande_px(person_height_px)
-            mesure = mesurer_multilignes(image, results.segmentation_mask, waist_y_px,
-                                         x_tronc, demi_bande)
+            segment = mesurer_multilignes(
+                image,
+                results.segmentation_mask,
+                waist_y_px,
+                x_tronc,
+                demi_bande_px(person_height_px),
+            )
             if results.segmentation_mask is not None:
                 cv2.imwrite(f"{image_name}_masque_profil.png",
                             (results.segmentation_mask > SEUIL_MASQUE).astype(np.uint8) * 255)
             if details is not None:
-                details.update(details_multilignes(mesure, N_LIGNES))
-            if mesure is None:
+                details.update(details_multilignes(segment))
+            if segment is None:
                 print("Bords de la silhouette introuvables sur la ligne de mesure.")
                 return None
-            segment = mesure.segment_median
-            x_left, x_right = segment.x_gauche, segment.x_droite
-            y_niveau = waist_y_px          # niveau retenu (centre de la bande)
-            waist_y_px = mesure.y_median   # ligne affichée : la plus proche de la médiane
+            x_left = segment.segment_median.x_gauche
+            x_right = segment.segment_median.x_droite
 
             # Conversion de la largeur de la taille en centimètres
-            waist_width_px = mesure.largeur_px
+            waist_width_px = segment.largeur_px
             waist_width_cm = waist_width_px * ratio_pixel_cm
 
-            # Bande de mesure F-23 (cadre fin bleu autour du niveau retenu)
-            cv2.rectangle(image, (x_left, y_niveau - demi_bande),
-                          (x_right, y_niveau + demi_bande), (255, 128, 0), 1)
             # Annoter et sauvegarde l'image avec les résultats
             cv2.line(image, (x_left, waist_y_px), (x_right, waist_y_px), (0, 255, 0), 3)
             cv2.putText(image, f"{waist_width_cm:.2f} cm", (x_left, waist_y_px - 20),
@@ -192,33 +207,32 @@ def mesurer_largeur_taille(image_path, user_height_cm, image_name="output", deta
             distance_epaules_talons = abs(heel_y_px - shoulder_y_px)
             waist_y_px = int(shoulder_y_px + (distance_epaules_talons * 0.25))
 
-            # Bords de la silhouette (A-04) : masque de segmentation MediaPipe en
-            # priorité, Canny en repli, balayage depuis le milieu des hanches.
-            # F-23 : mesure sur plusieurs lignes autour du niveau retenu, médiane.
+            # Bords de la silhouette sur la ligne de mesure (A-04) : masque de
+            # segmentation MediaPipe en priorité, Canny en repli. Le balayage part
+            # du milieu des hanches (centre du tronc) et non du centre de l'image.
             x_tronc = int(((left_hip.x + right_hip.x) / 2) * width)
-            demi_bande = demi_bande_px(person_height_px)
-            mesure = mesurer_multilignes(image, results.segmentation_mask, waist_y_px,
-                                         x_tronc, demi_bande)
+            segment = mesurer_multilignes(
+                image,
+                results.segmentation_mask,
+                waist_y_px,
+                x_tronc,
+                demi_bande_px(person_height_px),
+            )
             if results.segmentation_mask is not None:
                 cv2.imwrite(f"{image_name}_masque_face.png",
                             (results.segmentation_mask > SEUIL_MASQUE).astype(np.uint8) * 255)
             if details is not None:
-                details.update(details_multilignes(mesure, N_LIGNES))
-            if mesure is None:
+                details.update(details_multilignes(segment))
+            if segment is None:
                 print("Bords de la silhouette introuvables sur la ligne de mesure.")
                 return None
-            segment = mesure.segment_median
-            x_left, x_right = segment.x_gauche, segment.x_droite
-            y_niveau = waist_y_px          # niveau retenu (centre de la bande)
-            waist_y_px = mesure.y_median   # ligne affichée : la plus proche de la médiane
+            x_left = segment.segment_median.x_gauche
+            x_right = segment.segment_median.x_droite
 
             # Conversion de la largeur de la taille en centimètres
-            waist_width_px = mesure.largeur_px
+            waist_width_px = segment.largeur_px
             waist_width_cm = waist_width_px * ratio_pixel_cm
 
-            # Bande de mesure F-23 (cadre fin bleu autour du niveau retenu)
-            cv2.rectangle(image, (x_left, y_niveau - demi_bande),
-                          (x_right, y_niveau + demi_bande), (255, 128, 0), 1)
             # Annoter l'image avec les résultats
             cv2.line(image, (x_left, waist_y_px), (x_right, waist_y_px), (0, 255, 0), 3)
             cv2.putText(image, f"{waist_width_cm:.2f} cm", (x_left, waist_y_px - 20),
@@ -332,8 +346,12 @@ def calculer_bri(
         )
         return None
 
-    # 7. Calcul du BRI : formule originale de Thomas et al.
-    BRI = calculate_bri(waist_circumference, user_height_cm)
+    # 7. Calcul du BRI : formule originale
+    try:
+        BRI = calculate_body_roundness_index(waist_circumference, user_height_cm)
+    except ValueError:
+        print("Erreur : circonférence incompatible avec la taille pour cette formule.")
+        return None
 
     # 8. Résultats
     resultats = {

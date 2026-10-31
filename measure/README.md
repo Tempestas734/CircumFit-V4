@@ -30,12 +30,15 @@ Les fonctions de mesure renvoient des **largeurs complètes** en centimètres :
 `largeur_taille_cm` correspond à la largeur frontale et `profondeur_taille_cm`
 à la profondeur latérale. Ce ne sont pas des demi-axes.
 
-Le calcul distingue les largeurs complètes des demi-axes :
-`r1 = largeur_taille_cm / 2` et `r2 = profondeur_taille_cm / 2`, puis applique
-l'approximation de Ramanujan II :
+Les mesures `largeur_taille_cm` et `profondeur_taille_cm` sont des largeurs
+complètes. Le code les distingue des demi-axes `r1 = largeur_taille_cm / 2`
+et `r2 = profondeur_taille_cm / 2`, puis applique l'approximation de
+Ramanujan II :
 
-`π × (r1 + r2) × [1 + 3h / (10 + √(4 − 3h))]`, où
-`h = ((r1 − r2) / (r1 + r2))²`.
+`π × [3(r1 + r2) − √((3r1 + r2)(r1 + 3r2))]`
+
+Le BRI suit l'équation de Thomas et al. avec la racine carrée :
+`364,2 − 365,5 × √(1 − (circonférence / (π × taille))²)`.
 
 Le résultat est multiplié par un facteur de forme. Il vaut actuellement **1,0
 (non calibré)**, car aucun jeu de mesures de référence au mètre ruban n'est
@@ -46,19 +49,15 @@ doit ensuite remplacer `DEFAULT_WAIST_SHAPE_FACTOR`. Tant que ce facteur n'a
 pas été calculé sur des données de référence, les résultats ne doivent pas être
 présentés comme calibrés.
 
-Le BRI suit l'équation de Thomas et al. :
-`364,2 − 365,5 × √(1 − [circonférence / (π × taille)]²)`.
-Le rapport est mis au carré puis passé sous une racine carrée ; il ne faut pas
-utiliser une puissance 2,5. Cette formule est partagée entre l'API, le script
-autonome et le calcul local dans l'application, avec des tests dédiés.
-
 ### Segmentation de la silhouette (A-04)
 
-Les bords de la silhouette sur la ligne de mesure sont trouvés en priorité
+Les bords de la silhouette autour de la ligne de mesure sont trouvés en priorité
 avec le **masque de segmentation** de MediaPipe Pose (`enable_segmentation=True`,
 modèle déjà embarqué, aucune dépendance ajoutée). La largeur retenue est celle
 du segment « personne » qui contient le milieu des hanches : les bras écartés,
 les motifs des vêtements, les ombres et le décor ne coupent plus la mesure.
+Le serveur mesure neuf lignes sur une bande de 2 % de la hauteur estimée du
+sujet et retient la médiane des largeurs valides.
 
 **Canny reste en repli** si le masque est absent, quasi vide, couvre presque
 toute l'image, ou si le segment obtenu touche le bord de l'image ou a une
@@ -80,39 +79,3 @@ Le code est dans `segmentation.py` (fonctions pures). Tests :
 Limite connue : si les bras touchent le tronc au niveau de la ligne de mesure,
 le masque les inclut. Le protocole de pose (F-10) et le contrôle qualité (F-14)
 doivent l'éviter.
-
-### Mesure multi-lignes avec médiane (F-23)
-
-La largeur (vue de face) et la profondeur (vue de profil) ne sont plus lues sur
-une seule ligne : elles sont mesurées sur **9 lignes** régulièrement réparties
-dans une bande de **± 2 % de la hauteur du sujet** autour du niveau retenu, et
-la valeur gardée est la **médiane** des lignes valides. Un bord mal détecté sur
-quelques lignes (bras qui touche le tronc localement, ombre, pli de vêtement)
-n'influence donc plus le résultat.
-
-- Chaque ligne est mesurée comme en A-04 (masque, Canny en repli). Le masque
-  est préparé une seule fois pour toutes les lignes : pas de surcoût de calcul.
-- Si moins de la moitié des lignes sont valides, la mesure est refusée (`None`)
-  plutôt que calculée sur une ou deux lignes.
-- La bande est exprimée en fraction de la hauteur du sujet en pixels : le
-  résultat ne dépend pas de la résolution de la photo.
-- Paramètres (`N_LIGNES`, `DEMI_BANDE_FRACTION`, `FRACTION_LIGNES_VALIDES_MIN`
-  dans `segmentation.py`) choisis sans calibration, à revoir avec la campagne
-  de mesures (E-06).
-
-L'API renvoie en plus, pour chaque vue, le détail des lignes. `methode` vaut
-`mixte` si certaines lignes ont été mesurées par le masque et d'autres par Canny ;
-un `ecart_px` élevé signale des bords incohérents d'une ligne à l'autre.
-
-```json
-"face": {
-  "methode": "masque", "raison_repli": null,
-  "lignes": {"n_valides": 9, "n_total": 9, "ecart_px": 4,
-             "demi_bande_px": 60, "par_methode": {"masque": 9, "canny": 0}}
-}
-```
-
-Tests : `measure/test_multilignes.py` (masques synthétiques, sans photo).
-
-Limite : si les bras touchent le tronc sur toute la hauteur de la bande, la
-médiane ne peut pas les écarter ; le protocole de pose (F-10) reste nécessaire.
